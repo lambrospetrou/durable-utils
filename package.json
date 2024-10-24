@@ -3,7 +3,9 @@
   "version": "0.0.1",
   "description": "Utilities for Cloudflare Durable Objects and Workers.",
   "files": [
-    "dist/*"
+    "dist/*",
+    "README.md",
+    "LICENSE"
   ],
   "module": "dist/index.esm.js",
   "main": "dist/index.js",
