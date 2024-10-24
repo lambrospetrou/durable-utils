@@ -1,26 +1,26 @@
 import type { DurableObjectStorage } from "@cloudflare/workers-types";
 
-export interface SchemaMigration {
+export interface SQLSchemaMigration {
     idMonotonicInc: number;
     description: string;
 
     sql?: string;
 }
 
-export interface SchemaMigrationsConfig {
+export interface SQLSchemaMigrationsConfig {
     doStorage: DurableObjectStorage;
-    migrations: SchemaMigration[];
+    migrations: SQLSchemaMigration[];
 
     __lastAppliedMigrationMonotonicID_OVERRIDE_FOR_MANUAL_MIGRATIONS?: number;
 }
 
-export class SchemaMigrations {
-    _config: Omit<SchemaMigrationsConfig, "__lastAppliedMigrationMonotonicID_OVERRIDE_FOR_MANUAL_MIGRATIONS">;
-    _migrations: SchemaMigration[];
+export class SQLSchemaMigrations {
+    _config: Omit<SQLSchemaMigrationsConfig, "__lastAppliedMigrationMonotonicID_OVERRIDE_FOR_MANUAL_MIGRATIONS">;
+    _migrations: SQLSchemaMigration[];
 
     _lastMigrationMonotonicId: number = -1;
 
-    constructor(config: SchemaMigrationsConfig) {
+    constructor(config: SQLSchemaMigrationsConfig) {
         this._config = config;
 
         const migrations = [...config.migrations];
@@ -40,7 +40,7 @@ export class SchemaMigrations {
 
         if (config.__lastAppliedMigrationMonotonicID_OVERRIDE_FOR_MANUAL_MIGRATIONS) {
             this._config.doStorage.put<number>(
-                "_rf_migrations_lastID",
+                "__sql_migrations_lastID",
                 config.__lastAppliedMigrationMonotonicID_OVERRIDE_FOR_MANUAL_MIGRATIONS,
             );
         }
@@ -63,7 +63,7 @@ export class SchemaMigrations {
             return result;
         }
 
-        this._lastMigrationMonotonicId = (await this._config.doStorage.get<number>("_rf_migrations_lastID")) ?? -1;
+        this._lastMigrationMonotonicId = (await this._config.doStorage.get<number>("__sql_migrations_lastID")) ?? -1;
 
         // Skip all the applied ones.
         let idx = 0,
@@ -100,7 +100,7 @@ export class SchemaMigrations {
 
             this._lastMigrationMonotonicId = _lastMigrationMonotonicId;
 
-            await this._config.doStorage.put<number>("_rf_migrations_lastID", this._lastMigrationMonotonicId);
+            await this._config.doStorage.put<number>("__sql_migrations_lastID", this._lastMigrationMonotonicId);
         });
 
         return result;

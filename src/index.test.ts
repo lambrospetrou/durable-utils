@@ -1,6 +1,6 @@
-import { expect, test } from 'vitest';
-import { add } from './index.ts';
+import { expect, test } from "vitest";
+import { add } from "./index.ts";
 
-test('adds two numbers', () => {
-  expect(add(1, 2)).toBe(3);
+test("adds two numbers", () => {
+    expect(add(1, 2)).toBe(3);
 });

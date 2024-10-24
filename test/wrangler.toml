@@ -1,0 +1,13 @@
+name = "durable-objects"
+main = "./workers-test.ts"
+compatibility_date = "2024-10-18"
+compatibility_flags = ["nodejs_compat"]
+
+[durable_objects]
+bindings = [
+	{ name = "SQLDO", class_name = "SQLiteDO" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SQLiteDO"]
