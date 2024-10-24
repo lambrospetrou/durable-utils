@@ -1,6 +1,6 @@
 {
     "name": "durable-utils",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "description": "Utilities for Cloudflare Durable Objects and Workers, including SQL migrations and stream helpers.",
     "module": "index.esm.js",
     "main": "index.js",
@@ -23,6 +23,10 @@
         "sqlite"
     ],
     "author": "Lambros Petrou (lambrospetrou.com)",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/lambrospetrou/durable-utils.git"
+    },
     "license": "MIT",
     "devDependencies": {
         "@cloudflare/vitest-pool-workers": "^0.5.21",

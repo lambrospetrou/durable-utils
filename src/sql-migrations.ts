@@ -1,56 +1,70 @@
 import type { DurableObjectStorage } from "@cloudflare/workers-types";
 
-// Represents a single SQL schema migration to run.
+/**
+ * Represents a single SQL schema migration to run.
+ */
 export interface SQLSchemaMigration {
-    // Each migration is identified by this number. You should always use monotonically
-    // increasing numbers for any new migration added, and never change already applied
-    // migrations.
-    // If you modify the `sql` statement of an already applied migration it will not be applied.
+    /**
+     * Each migration is identified by this number. You should always use monotonically
+     * increasing numbers for any new migration added, and never change already applied
+     * migrations.
+     * If you modify the `sql` statement of an already applied migration it will not be applied.
+     */
     idMonotonicInc: number;
 
-    // Just a description for you, the coder, to know what the migration is about.
-    // This is not used in any way by the migrations runner.
+    /**
+     * Just a description for you, the coder, to know what the migration is about.
+     * This is not used in any way by the migrations runner.
+     */
     description: string;
 
-    // The SQL statement to execute for a single schema migration.
-    // Can be multiple statements separated by semicolon (`;`).
-    // This statement is passed directly to the `storage.sql.exec()` function.
-    // See https://developers.cloudflare.com/durable-objects/api/storage-api/#sqlexec
-    //
-    // You should always try and make your SQL statements to be safe to run multiple times.
-    // Even though `SQLSchemaMigrations.runAll()` keeps track of the last migration ID and
-    // never runs anything less than that ID, it's best practice for your statements to be defensive.
-    // For example use `CREATE TABLE IF NOT EXISTS` instead of `CREATE TABLE`.
-    //
-    // Also, you should never change the `sql` code of an already ran migration. Add a new entry
-    // in the `SQLSchemaMigrationsConfig.migrations` list altering the schema as you wish.
-    //
-    // In majority of cases you should always provide this. In the cases where you need to dynamically
-    // fetch your statements at runtime, the `SQLSchemaMigrations.runAll` function accepts
-    // a function (`genSql`) that will be called when migrations are executed and based on the `idMonotonicInc`
-    // you can return the SQL statement to run at that point.
-    // If `sql` is provided, then that callback function is not called even if provided.
+    /**
+     * The SQL statement to execute for a single schema migration.
+     * Can be multiple statements separated by semicolon (`;`).
+     * This statement is passed directly to the `storage.sql.exec()` function.
+     * See https://developers.cloudflare.com/durable-objects/api/storage-api/#sqlexec
+     *
+     * You should always try and make your SQL statements to be safe to run multiple times.
+     * Even though `SQLSchemaMigrations.runAll()` keeps track of the last migration ID and
+     * never runs anything less than that ID, it's best practice for your statements to be defensive.
+     * For example use `CREATE TABLE IF NOT EXISTS` instead of `CREATE TABLE`.
+     *
+     * Also, you should never change the `sql` code of an already ran migration. Add a new entry
+     * in the `SQLSchemaMigrationsConfig.migrations` list altering the schema as you wish.
+     *
+     * In majority of cases you should always provide this. In the cases where you need to dynamically
+     * fetch your statements at runtime, the `SQLSchemaMigrations.runAll` function accepts
+     * a function (`genSql`) that will be called when migrations are executed and based on the `idMonotonicInc`
+     * you can return the SQL statement to run at that point.
+     * If `sql` is provided, then that callback function is not called even if provided.
+     */
     sql?: string;
 }
 
 export interface SQLSchemaMigrationsConfig {
-    // The `DurableObjectState.storage` property of your Durable Object instance.
-    // Usually the `ctx` argument in your DO class constructor, or `state` in some codebases.
-    // See https://developers.cloudflare.com/durable-objects/api/state/#storage
+    /**
+     * The `DurableObjectState.storage` property of your Durable Object instance.
+     * Usually the `ctx` argument in your DO class constructor, or `state` in some codebases.
+     * See https://developers.cloudflare.com/durable-objects/api/state/#storage
+     */
     doStorage: DurableObjectStorage;
 
-    // The list of SQL schema migrations to run in the SQLite database of the Durable Object instance.
-    // Once the given migrations run at least once, you should never modify existing entries,
-    // otherwise you risk corrupting your database, since already ran migrations, will NOT run again.
+    /**
+     * The list of SQL schema migrations to run in the SQLite database of the Durable Object instance.
+     * Once the given migrations run at least once, you should never modify existing entries,
+     * otherwise you risk corrupting your database, since already ran migrations, will NOT run again.
+     */
     migrations: SQLSchemaMigration[];
 
-    // This is the key that will be used to track the last successful migration ID in the KV storage.
-    // You should never have to use this, unless you were using an older version of `SQLSchemaMigrations`
-    // that was using a different key by default, and therefore you would like your migrations to
-    // continue using that, otherwise your migrations would run again being tracked with the new key.
-    //
-    // If your SQL migrations are safe to be ran multiple times, then just don't provide this.
-    // For example, using `CREATE TABLE IF NOT EXISTS` is safe, whereas `CREATE TABLE` along is not.
+    /**
+     * This is the key that will be used to track the last successful migration ID in the KV storage.
+     * You should never have to use this, unless you were using an older version of `SQLSchemaMigrations`
+     * that was using a different key by default, and therefore you would like your migrations to
+     * continue using that, otherwise your migrations would run again being tracked with the new key.
+     *
+     * If your SQL migrations are safe to be ran multiple times, then just don't provide this.
+     * For example, using `CREATE TABLE IF NOT EXISTS` is safe, whereas `CREATE TABLE` along is not.
+     */
     keyNameTrackingLastMigrationID?: string;
 }
 
@@ -103,6 +117,11 @@ export class SQLSchemaMigrations {
         //      Also, if we want to do this, we cannot do it here, since we need to be within `async` function. :(
     }
 
+    /**
+     * This is a quick check based on the in memory tracker of last migration ran,
+     * therefore this always returns `true` until `runAll` runs once.
+     * @returns True if the `migrations` list provided has not been ran in full yet.
+     */
     hasMigrationsToRun() {
         if (!this._migrations.length) {
             return false;
