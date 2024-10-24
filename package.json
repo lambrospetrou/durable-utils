@@ -1,28 +1,26 @@
 {
     "name": "durable-utils",
-    "version": "0.1.0",
-    "description": "Utilities for Cloudflare Durable Objects and Workers.",
-    "files": [
-        "dist/*",
-        "README.md",
-        "LICENSE"
-    ],
-    "module": "dist/index.esm.js",
-    "main": "dist/index.js",
-    "typings": "dist/index.d.ts",
+    "version": "0.1.1",
+    "description": "Utilities for Cloudflare Durable Objects and Workers, including SQL migrations and stream helpers.",
+    "module": "index.esm.js",
+    "main": "index.js",
+    "typings": "index.d.ts",
     "scripts": {
         "fmt": "npx prettier . --check --write --ignore-unknown",
         "gen:types": "tsc --emitDeclarationOnly ",
         "prebuild": "npx shx rm -rf ./dist",
         "build": "node --experimental-modules ./tools/build.mjs",
         "test": "vitest --run",
-        "release": "npm test && npm run build && npm run gen:types"
+        "release": "npm test && npm run build && npm run gen:types",
+        "prenpm:publish": "npm run release",
+        "npm:publish": "npx shx rm -rf npm_dist && npx shx mkdir -p npm_dist && npx shx cp package.json README.md dist/* npm_dist/ && cd npm_dist && npm publish --access public",
+        "npm:publish:dryrun": "npm run npm:publish -- --dry-run"
     },
     "keywords": [
         "cloudflare",
-        "durable",
-        "objects",
-        "workers"
+        "durable-objects",
+        "workers",
+        "sqlite"
     ],
     "author": "Lambros Petrou (lambrospetrou.com)",
     "license": "MIT",
