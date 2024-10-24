@@ -7,8 +7,6 @@ import {
     Response,
 } from "@cloudflare/workers-types";
 
-import { SQLSchemaMigration, SQLSchemaMigrations } from "../src/sql-migrations";
-
 interface Env {
     SQLDO: DurableObjectNamespace;
 }
@@ -21,15 +19,6 @@ export class SQLiteDO implements DurableObject {
 
     fetch(request: Request): Response | Promise<Response> {
         throw new Error("Method not implemented.");
-    }
-
-    async runMigrations(sqlMigrations: SQLSchemaMigration[]) {
-        const migrations = new SQLSchemaMigrations({
-            migrations: sqlMigrations,
-            doStorage: this.ctx.storage,
-        });
-        const result = await migrations.runAll();
-        return { result, dbSize: this.ctx.storage.sql.databaseSize };
     }
 }
 
