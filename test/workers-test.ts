@@ -28,8 +28,8 @@ export class SQLiteDO implements DurableObject {
             migrations: sqlMigrations,
             doStorage: this.ctx.storage,
         });
-        await migrations.runAll();
-        return { dbSize: this.ctx.storage.sql.databaseSize };
+        const result = await migrations.runAll();
+        return { result, dbSize: this.ctx.storage.sql.databaseSize };
     }
 }
 

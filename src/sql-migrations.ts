@@ -44,6 +44,11 @@ export class SQLSchemaMigrations {
                 config.__lastAppliedMigrationMonotonicID_OVERRIDE_FOR_MANUAL_MIGRATIONS,
             );
         }
+
+        // TODO Should we load the `_lastMigrationMonotonicId` from storage here?
+        //      Without loading it, `hasMigrationsToRun()` will always return true until `runAll()` runs once.
+        //      That's not bad per se, since everyone should `runAll()` as soon as they need their storage
+        //      to be writeable.
     }
 
     hasMigrationsToRun() {
@@ -80,7 +85,7 @@ export class SQLSchemaMigrations {
         const doSql = this._config.doStorage.sql;
         const migrationsToRun = this._migrations.slice(idx);
 
-        this._config.doStorage.transaction(async () => {
+        await this._config.doStorage.transaction(async () => {
             let _lastMigrationMonotonicId = this._lastMigrationMonotonicId;
 
             migrationsToRun.forEach((migration) => {
