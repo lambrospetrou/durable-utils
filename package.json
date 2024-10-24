@@ -1,6 +1,6 @@
 {
     "name": "durable-utils",
-    "version": "0.0.1",
+    "version": "0.1.0",
     "description": "Utilities for Cloudflare Durable Objects and Workers.",
     "files": [
         "dist/*",
@@ -12,7 +12,7 @@
     "typings": "dist/index.d.ts",
     "scripts": {
         "fmt": "npx prettier . --check --write --ignore-unknown",
-        "gen:types": "tsc --emitDeclarationOnly",
+        "gen:types": "tsc --emitDeclarationOnly ",
         "prebuild": "npx shx rm -rf ./dist",
         "build": "node --experimental-modules ./tools/build.mjs",
         "test": "vitest --run",
