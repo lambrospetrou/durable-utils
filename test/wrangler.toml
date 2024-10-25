@@ -1,13 +1,24 @@
-name = "durable-objects"
+name = "durable-utils-tests"
 main = "./workers-test.ts"
 compatibility_date = "2024-10-18"
 compatibility_flags = ["nodejs_compat"]
 
+services = [
+	# Auxiliary Worker to place a given Worker name into a specific region.
+	{binding = "RegionPlacer", service="durable-utils-tests", entrypoint="RegionPlacer"},
+
+	# The user Worker we want to invoke in the specific region.
+	{binding = "TargetWorker", service="durable-utils-tests", entrypoint="TargetWorker"}
+]
+
 [durable_objects]
 bindings = [
-	{ name = "SQLDO", class_name = "SQLiteDO" }
+	{ name = "SQLDO", class_name = "SQLiteDO" },
+
+	# Required DO to bind into our Worker project to be able to regionally place Worker calls.
+	{ name = "RegionPlacerDO", class_name = "RegionPlacerDO" }
 ]
 
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["SQLiteDO"]
+new_sqlite_classes = ["SQLiteDO", "RegionPlacerDO"]
