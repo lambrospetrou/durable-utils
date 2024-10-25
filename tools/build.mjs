@@ -6,7 +6,7 @@ const { dependencies, peerDependencies } = readFileSync("./package.json", "utf-8
 const sharedConfig = {
     entryPoints: ["src/index.ts", "src/sql-migrations.ts"],
     bundle: true,
-    minify: true,
+    // minify: true,
     external: Object.keys(dependencies ?? {}).concat(Object.keys(peerDependencies ?? {})),
 };
 

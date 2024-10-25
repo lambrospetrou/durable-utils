@@ -87,13 +87,13 @@ export interface SQLSchemaMigrationsConfig {
  * write into the SQLite database, or at least run it once in the constructor of your DO.
  */
 export class SQLSchemaMigrations {
-    _config: SQLSchemaMigrationsConfig;
-    _migrations: SQLSchemaMigration[];
+    #_config: SQLSchemaMigrationsConfig;
+    #_migrations: SQLSchemaMigration[];
 
-    _lastMigrationMonotonicId: number = -1;
+    #_lastMigrationMonotonicId: number = -1;
 
     constructor(config: SQLSchemaMigrationsConfig) {
-        this._config = config;
+        this.#_config = config;
 
         const migrations = [...config.migrations];
         migrations.sort((a, b) => a.idMonotonicInc - b.idMonotonicInc);
@@ -108,7 +108,7 @@ export class SQLSchemaMigrations {
             idSeen.add(m.idMonotonicInc);
         });
 
-        this._migrations = migrations;
+        this.#_migrations = migrations;
 
         // TODO Should we load the `_lastMigrationMonotonicId` from storage here?
         //      Without loading it, `hasMigrationsToRun()` will always return true until `runAll()` runs once.
@@ -123,10 +123,10 @@ export class SQLSchemaMigrations {
      * @returns True if the `migrations` list provided has not been ran in full yet.
      */
     hasMigrationsToRun() {
-        if (!this._migrations.length) {
+        if (!this.#_migrations.length) {
             return false;
         }
-        return this._lastMigrationMonotonicId !== this._migrations[this._migrations.length - 1].idMonotonicInc;
+        return this.#_lastMigrationMonotonicId !== this.#_migrations[this.#_migrations.length - 1].idMonotonicInc;
     }
 
     /**
@@ -148,13 +148,13 @@ export class SQLSchemaMigrations {
             return result;
         }
 
-        this._lastMigrationMonotonicId =
-            (await this._config.doStorage.get<number>(this._lastMigrationIDKeyName())) ?? -1;
+        this.#_lastMigrationMonotonicId =
+            (await this.#_config.doStorage.get<number>(this.#_lastMigrationIDKeyName())) ?? -1;
 
         // Skip all the applied ones.
         let idx = 0,
-            sz = this._migrations.length;
-        while (idx < sz && this._migrations[idx].idMonotonicInc <= this._lastMigrationMonotonicId) {
+            sz = this.#_migrations.length;
+        while (idx < sz && this.#_migrations[idx].idMonotonicInc <= this.#_lastMigrationMonotonicId) {
             idx += 1;
         }
 
@@ -163,11 +163,11 @@ export class SQLSchemaMigrations {
             return result;
         }
 
-        const doSql = this._config.doStorage.sql;
-        const migrationsToRun = this._migrations.slice(idx);
+        const doSql = this.#_config.doStorage.sql;
+        const migrationsToRun = this.#_migrations.slice(idx);
 
-        await this._config.doStorage.transaction(async () => {
-            let _lastMigrationMonotonicId = this._lastMigrationMonotonicId;
+        await this.#_config.doStorage.transaction(async () => {
+            let _lastMigrationMonotonicId = this.#_lastMigrationMonotonicId;
 
             migrationsToRun.forEach((migration) => {
                 let query = migration.sql ?? sqlGen?.(migration.idMonotonicInc);
@@ -184,15 +184,15 @@ export class SQLSchemaMigrations {
                 _lastMigrationMonotonicId = migration.idMonotonicInc;
             });
 
-            this._lastMigrationMonotonicId = _lastMigrationMonotonicId;
+            this.#_lastMigrationMonotonicId = _lastMigrationMonotonicId;
 
-            await this._config.doStorage.put<number>(this._lastMigrationIDKeyName(), this._lastMigrationMonotonicId);
+            await this.#_config.doStorage.put<number>(this.#_lastMigrationIDKeyName(), this.#_lastMigrationMonotonicId);
         });
 
         return result;
     }
 
-    _lastMigrationIDKeyName() {
-        return this._config.keyNameTrackingLastMigrationID ?? "__sql_migrations_lastID";
+    #_lastMigrationIDKeyName() {
+        return this.#_config.keyNameTrackingLastMigrationID ?? "__sql_migrations_lastID";
     }
 }

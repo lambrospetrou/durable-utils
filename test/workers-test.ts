@@ -7,7 +7,7 @@ import {
     Response,
 } from "@cloudflare/workers-types";
 
-interface Env {
+export interface Env {
     SQLDO: DurableObjectNamespace;
 }
 

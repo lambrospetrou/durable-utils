@@ -1,7 +1,7 @@
-import { env, listDurableObjectIds, runInDurableObject, SELF } from "cloudflare:test";
+import { env, listDurableObjectIds, runInDurableObject } from "cloudflare:test";
 import { DurableObjectState } from "@cloudflare/workers-types";
 import { describe, expect, it } from "vitest";
-import { SQLiteDO } from "./workers-test";
+import { Env, SQLiteDO } from "./workers-test";
 import { SQLSchemaMigration, SQLSchemaMigrations } from "../src/sql-migrations";
 
 function makeM(state: DurableObjectState, migrations: SQLSchemaMigration[]) {
@@ -9,6 +9,10 @@ function makeM(state: DurableObjectState, migrations: SQLSchemaMigration[]) {
         doStorage: state.storage,
         migrations: migrations,
     });
+}
+
+declare module "cloudflare:test" {
+    interface ProvidedEnv extends Env {}
 }
 
 describe("happy paths", async () => {
@@ -65,6 +69,56 @@ describe("happy paths", async () => {
                 rowsRead: 2,
                 rowsWritten: 6,
             });
+        });
+    });
+
+    it("multiple DDL and data inserts", async () => {
+        const id = env.SQLDO.idFromName("data-test");
+        const stub = env.SQLDO.get(id);
+
+        await runInDurableObject(stub, async (instance: SQLiteDO, state: DurableObjectState) => {
+            await makeM(state, [
+                {
+                    idMonotonicInc: 1,
+                    description: "tbl1",
+                    sql: `CREATE TABLE users(name TEXT PRIMARY KEY, age INTEGER);`,
+                },
+                {
+                    idMonotonicInc: 2,
+                    description: "data",
+                    sql: `INSERT INTO users VALUES ('ironman', 100); INSERT INTO users VALUES ('thor', 9000);`,
+                },
+                {
+                    idMonotonicInc: 3,
+                    description: "data2",
+                    sql: `INSERT INTO users VALUES ('hulk', 5);`,
+                },
+            ]).runAll();
+
+            let rows = state.storage.sql.exec<{ name: string; age: number }>(`SELECT * FROM users;`).toArray();
+            expect(rows).toEqual([
+                { name: "ironman", age: 100 },
+                { name: "thor", age: 9000 },
+                { name: "hulk", age: 5 },
+            ]);
+
+            await makeM(state, [
+                // Edge case but even if you do not provide the previous migrations
+                // it should run only from where it left off.
+                // WARNING: Do not do this in production since running these for a first time
+                // on a fresh DO will fail!!!
+                {
+                    idMonotonicInc: 4,
+                    description: "data3",
+                    sql: `DELETE FROM users WHERE name = 'thor';`,
+                },
+            ]).runAll();
+
+            rows = state.storage.sql.exec<{ name: string; age: number }>(`SELECT * FROM users;`).toArray();
+            expect(rows).toEqual([
+                { name: "ironman", age: 100 },
+                { name: "hulk", age: 5 },
+            ]);
         });
     });
 
