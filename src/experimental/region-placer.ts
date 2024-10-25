@@ -1,6 +1,11 @@
-import type { DurableObjectLocationHint, DurableObjectState } from "@cloudflare/workers-types";
+import type { DurableObjectLocationHint } from "@cloudflare/workers-types";
 // ts-ignore
 import { DurableObject, WorkerEntrypoint, RpcTarget } from "cloudflare:workers";
+
+// TODO Can I avoid this?
+type Env = {
+    RegionPlacerDO: DurableObjectNamespace<RegionPlacerDO>;
+};
 
 /**
  * RegionPlacerDO is a Durable Object you have to add to your Worker bindings
@@ -10,15 +15,17 @@ import { DurableObject, WorkerEntrypoint, RpcTarget } from "cloudflare:workers";
  *
  * The Durable Object instance does NOT stay running while your Worker calls are running.
  */
-export class RegionPlacerDO extends DurableObject {
-    constructor(
-        readonly ctx: DurableObjectState,
-        readonly env: Record<string, any>,
-    ) {
+export class RegionPlacerDO extends DurableObject<Env> {
+    constructor(ctx: DurableObjectState, env: Env) {
         super(ctx, env);
     }
 
     createExecutorStub(bindingName: string) {
+        // @ts-ignore
+        if (!this.env[bindingName]?.createRegionPlacedWorkerEntrypoint) {
+            throw new Error("RegionPlacerDO: invalid bindingName given");
+        }
+        // @ts-ignore
         return this.env[bindingName].createRegionPlacedWorkerEntrypoint();
     }
 }
@@ -34,9 +41,9 @@ export class RegionPlacerDO extends DurableObject {
  * The above example will invoke the method `ping("boomer")` on the Worker binding `TargetWorker`
  * inside the the `eeur` region.
  */
-export class RegionPlacer extends WorkerEntrypoint {
+export class RegionPlacer extends WorkerEntrypoint<Env> {
     place(locationHint: DurableObjectLocationHint, bindingName: string) {
-        return createDOStub(this, locationHint).createExecutorStub(bindingName);
+        return createDOStub(this.env, locationHint).createExecutorStub(bindingName);
     }
 }
 
@@ -62,7 +69,7 @@ export class RegionPlacer extends WorkerEntrypoint {
  * Then, to call `ping(...)` within eeur, assuming TARGETWORKER is the binding for TargetWorker:
  *  `env.TARGETWORKER.regionPlace("eeur").ping("hello")`
  */
-export class RegionPlaceableWorkerEntrypoint extends WorkerEntrypoint {
+export class RegionPlaceableWorkerEntrypoint extends WorkerEntrypoint<Env> {
     createRegionPlacedWorkerEntrypoint() {
         return new RegionPlaceableTarget(this);
     }
@@ -93,7 +100,7 @@ export class RegionPlaceableWorkerEntrypoint extends WorkerEntrypoint {
             );
         }
 
-        return createDOStub(this, locationHint).createExecutorStub(bindingName);
+        return createDOStub(this.env as Env, locationHint).createExecutorStub(bindingName);
     }
 }
 
@@ -104,7 +111,7 @@ export class RegionPlaceableWorkerEntrypoint extends WorkerEntrypoint {
  * This RpcTarget should have all the methods of the binding Worker that is attempting
  * to be region placed.
  */
-export class RegionPlaceableTarget<T> extends RpcTarget<T> {
+export class RegionPlaceableTarget extends RpcTarget {
     constructor(we: RegionPlaceableWorkerEntrypoint) {
         super();
         const targetPrototype = Object.getPrototypeOf(we);
@@ -121,12 +128,12 @@ export class RegionPlaceableTarget<T> extends RpcTarget<T> {
 
 //////////////// Helpers
 
-function createDOStub(we: WorkerEntrypoint, locationHint: DurableObjectLocationHint) {
+function createDOStub(env: Env, locationHint: DurableObjectLocationHint) {
     // TODO Make this configurable.
     // Spread load across 100 DOs.
     const shard = Math.ceil(Math.random() * 100);
-    const doId = we.env.RegionPlacerDO.idFromName(`region-placer-${locationHint}-${shard}`);
-    const doStub = we.env.RegionPlacerDO.get(doId, {
+    const doId = env.RegionPlacerDO.idFromName(`region-placer-${locationHint}-${shard}`);
+    const doStub = env.RegionPlacerDO.get(doId, {
         locationHint,
     });
     return doStub;

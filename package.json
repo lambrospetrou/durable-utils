@@ -7,13 +7,13 @@
     "typings": "index.d.ts",
     "scripts": {
         "fmt": "npx prettier . --check --write --ignore-unknown",
-        "gen:types": "tsc --emitDeclarationOnly ",
+        "gen:types": "tsc --emitDeclarationOnly",
         "prebuild": "npx shx rm -rf ./dist",
         "build": "node --experimental-modules ./tools/build.mjs",
         "test": "vitest --run",
         "release": "npm test && npm run build && npm run gen:types",
         "prenpm:publish": "npm run release",
-        "npm:publish": "npx shx rm -rf npm_dist && npx shx mkdir -p npm_dist && npx shx cp package.json README.md dist/* npm_dist/ && cd npm_dist && npm publish --access public",
+        "npm:publish": "npx shx rm -rf npm_dist && npx shx mkdir -p npm_dist && npx shx cp -r package.json README.md dist/* dist/experimental npm_dist/ && cd npm_dist && npm publish --access public",
         "npm:publish:dryrun": "npm run npm:publish -- --dry-run"
     },
     "keywords": [
