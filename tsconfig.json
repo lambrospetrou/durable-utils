@@ -10,7 +10,8 @@
         "strict": true,
         "skipLibCheck": true,
         "isolatedModules": true,
-        "types": ["@cloudflare/workers-types"]
+        "stripInternal": true,
+        "types": ["@cloudflare/workers-types/experimental"]
     },
-    "exclude": ["node_modules", "dist", "**/*.test.ts", "test"]
+    "exclude": ["node_modules", "dist", "test/**/*.ts"]
 }

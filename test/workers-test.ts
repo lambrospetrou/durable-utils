@@ -1,50 +1,88 @@
-import {
-    DurableObjectNamespace,
-    DurableObjectState,
-    ExportedHandler,
-    Request,
-    Response,
-} from "@cloudflare/workers-types";
-import { WorkerEntrypoint, DurableObject } from "cloudflare:workers";
+import { DurableObjectNamespace } from "@cloudflare/workers-types/experimental";
+import { DurableObject, RpcStub } from "cloudflare:workers";
 
-import { RegionPlaceableWorkerEntrypoint } from "../src/experimental/region-placer";
+import {
+    RegionPlaceableTarget,
+    RegionPlaceableWorkerEntrypoint,
+    RegionPlacer,
+} from "../src/experimental/region-placer";
 export { RegionPlacer, RegionPlacerDO } from "../src/experimental/region-placer";
 
 export interface Env {
     SQLDO: DurableObjectNamespace;
     RegionPlacerDO: DurableObjectNamespace;
-    RegionPlacer: WorkerEntrypoint;
-    TargetWorker: WorkerEntrypoint;
+
+    RegionPlacer: Service<RegionPlacer>;
+    TargetWorker: Service<TargetWorker>;
 }
 
-export class SQLiteDO extends DurableObject {
+export class SQLiteDO extends DurableObject<Env> {
     constructor(
         readonly ctx: DurableObjectState,
         readonly env: Env,
     ) {
         super(ctx, env);
     }
-
-    fetch(request: Request): Response | Promise<Response> {
-        throw new Error("Method not implemented.");
-    }
 }
 
-export default <ExportedHandler<Env>>{
-    fetch(request, env) {
-        const { pathname } = new URL(request.url);
-        const id = env.SQLDO.idFromName(pathname);
-        const stub = env.SQLDO.get(id);
-        return stub.fetch(request);
+export default {
+    async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+        const { pathname, searchParams } = new URL(request.url);
+
+        console.log("FETCH", pathname, searchParams.get("hint"));
+
+        if (pathname === "/region-placer/autoinfer" || pathname === "/region-placer/auxiliary") {
+            const locationHint = searchParams.get("hint") ?? "eeur";
+
+            // console.log("LOCATION HINT", locationHint);
+
+            // FIXME SUPER WEIRD that removing ALL the console.log below makes the tests hang.
+            // Keeping at least one console.log everything works fine. Vitest setup is buggy...
+            let stubToDipose: Disposable | null = null;
+            try {
+                if (pathname === "/region-placer/autoinfer") {
+                    // console.log("AUTOINFER", locationHint);
+                    stubToDipose = await env.TargetWorker.regionPlace(locationHint as DurableObjectLocationHint);
+                    // console.log("AUTOINFER TARGET PLACED", locationHint);
+                } else {
+                    // console.log("AUXILIARY", locationHint);
+                    stubToDipose = await env.RegionPlacer.place(
+                        locationHint as DurableObjectLocationHint,
+                        "TargetWorker",
+                    );
+                }
+                const workerTarget = stubToDipose as unknown as ITargetWorker;
+                // console.log("TARGET LOCATION", locationHint);
+                const targetLocationHint = await workerTarget.targetLocationHint();
+                // console.log("TARGET PINGING", locationHint);
+                const result = await workerTarget.ping("boomer");
+                // console.log("RESPONDING", locationHint);
+                return new Response(`${result} @ ${targetLocationHint}`);
+            } finally {
+                // DO NOT REMOVE FOR NOW.
+                console.log("DISPOSING", locationHint);
+                if (stubToDipose) {
+                    stubToDipose[Symbol.dispose]();
+                }
+            }
+        }
+
+        return new Response("-_-", { status: 404 });
     },
 };
 
+interface ITargetWorker extends RegionPlaceableTarget {
+    ping(v: string): Promise<string>;
+}
+
 export class TargetWorker extends RegionPlaceableWorkerEntrypoint {
-    async ping(v1: string) {
-        // console.log("hello from ping...", v1);
+    async ping(v: string) {
+        console.log("TargetWorker: hello from ping...", v);
+        // console.log("ping: BEFORE timeout...");
         // await new Promise(function (resolve: (value: unknown) => void) {
         //     setTimeout(() => resolve(undefined), 5_000);
         // });
-        return "ping:" + v1;
+        // console.log("ping: AFTER timeout...");
+        return "ping:" + v;
     }
 }

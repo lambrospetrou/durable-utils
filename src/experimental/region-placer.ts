@@ -1,11 +1,9 @@
 import type { DurableObjectLocationHint } from "@cloudflare/workers-types";
-// ts-ignore
-import { DurableObject, WorkerEntrypoint, RpcTarget } from "cloudflare:workers";
+import { DurableObject, WorkerEntrypoint, RpcTarget, RpcStub } from "cloudflare:workers";
 
-// TODO Can I avoid this?
-type Env = {
+interface Env {
     RegionPlacerDO: DurableObjectNamespace<RegionPlacerDO>;
-};
+}
 
 /**
  * RegionPlacerDO is a Durable Object you have to add to your Worker bindings
@@ -15,18 +13,17 @@ type Env = {
  *
  * The Durable Object instance does NOT stay running while your Worker calls are running.
  */
-export class RegionPlacerDO extends DurableObject<Env> {
-    constructor(ctx: DurableObjectState, env: Env) {
-        super(ctx, env);
-    }
-
-    createExecutorStub(bindingName: string) {
+export class RegionPlacerDO extends DurableObject {
+    async createExecutorStub(
+        bindingName: string,
+        locationHint: DurableObjectLocationHint,
+    ): Promise<RpcStub<RegionPlaceableTarget>> {
         // @ts-ignore
         if (!this.env[bindingName]?.createRegionPlacedWorkerEntrypoint) {
             throw new Error("RegionPlacerDO: invalid bindingName given");
         }
         // @ts-ignore
-        return this.env[bindingName].createRegionPlacedWorkerEntrypoint();
+        return this.env[bindingName].createRegionPlacedWorkerEntrypoint(locationHint);
     }
 }
 
@@ -42,8 +39,8 @@ export class RegionPlacerDO extends DurableObject<Env> {
  * inside the the `eeur` region.
  */
 export class RegionPlacer extends WorkerEntrypoint<Env> {
-    place(locationHint: DurableObjectLocationHint, bindingName: string) {
-        return createDOStub(this.env, locationHint).createExecutorStub(bindingName);
+    async place(locationHint: DurableObjectLocationHint, bindingName: string) {
+        return await createDOStub(this.env, locationHint).createExecutorStub(bindingName, locationHint);
     }
 }
 
@@ -70,11 +67,11 @@ export class RegionPlacer extends WorkerEntrypoint<Env> {
  *  `env.TARGETWORKER.regionPlace("eeur").ping("hello")`
  */
 export class RegionPlaceableWorkerEntrypoint extends WorkerEntrypoint<Env> {
-    createRegionPlacedWorkerEntrypoint() {
-        return new RegionPlaceableTarget(this);
+    async createRegionPlacedWorkerEntrypoint(locationHint: DurableObjectLocationHint) {
+        return new RegionPlaceableTarget(this, locationHint);
     }
 
-    regionPlace(locationHint: DurableObjectLocationHint) {
+    async regionPlace(locationHint: DurableObjectLocationHint) {
         // This should be the name of the Binding that was specified in the worker bindings.
         // e.g. if `export class TargetWorker extends RegionPlaceableWorkerEntrypoint` thisClassName will be `TargetWorker`.
         const thisClassName = Object.getPrototypeOf(this)?.constructor?.name;
@@ -100,7 +97,7 @@ export class RegionPlaceableWorkerEntrypoint extends WorkerEntrypoint<Env> {
             );
         }
 
-        return createDOStub(this.env as Env, locationHint).createExecutorStub(bindingName);
+        return createDOStub(this.env as Env, locationHint).createExecutorStub(bindingName, locationHint);
     }
 }
 
@@ -112,23 +109,34 @@ export class RegionPlaceableWorkerEntrypoint extends WorkerEntrypoint<Env> {
  * to be region placed.
  */
 export class RegionPlaceableTarget extends RpcTarget {
-    constructor(we: RegionPlaceableWorkerEntrypoint) {
+    #locationHint: DurableObjectLocationHint;
+
+    constructor(we: RegionPlaceableWorkerEntrypoint, locationHint: DurableObjectLocationHint) {
         super();
+
+        this.#locationHint = locationHint;
+
         const targetPrototype = Object.getPrototypeOf(we);
         const thisPrototype = Object.getPrototypeOf(this);
         Object.getOwnPropertyNames(targetPrototype).forEach((value) => {
             // TODO Decide if we need the filtering just to functions.
-            if (value === "constructor" || typeof targetPrototype[value] !== "function") {
+            // Do not copy the constructor, and the `regionPlace` function since I don't know yet
+            // if that works well with the binding name search.
+            if (value === "constructor" || value === "regionPlace" || typeof targetPrototype[value] !== "function") {
                 return;
             }
             thisPrototype[value] = targetPrototype[value];
         });
     }
+
+    async targetLocationHint() {
+        return this.#locationHint;
+    }
 }
 
 //////////////// Helpers
 
-function createDOStub(env: Env, locationHint: DurableObjectLocationHint) {
+function createDOStub(env: Env, locationHint: DurableObjectLocationHint): DurableObjectStub<RegionPlacerDO> {
     // TODO Make this configurable.
     // Spread load across 100 DOs.
     const shard = Math.ceil(Math.random() * 100);
