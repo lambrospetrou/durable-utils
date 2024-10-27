@@ -7,7 +7,7 @@ This is WIP, not working well yet, do not use it in production.
 Build the `durable-utils` library locally to be usable by the example.
 
 ```sh
-# From the repo root directory
+# While in the example directory, go to the repo root directory and build the libary.
 cd ../../ && npm run npm:publish:dryrun
 ```
 
