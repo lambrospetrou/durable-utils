@@ -1,21 +1,30 @@
 import {
     RegionPlaceableWorkerEntrypoint,
-} from "../../src/experimental/region-placer";
-export { RegionPlacer, RegionPlacerDO } from "../../src/experimental/region-placer";
+} from "durable-utils/experimental/region-placer.esm";
+export { RegionPlacer, RegionPlacerDO } from "durable-utils/experimental/region-placer.esm";
 
 export default {
     async fetch(request, env, ctx) {
-        const { pathname, searchParams } = new URL(request.url);
+        const { pathname, searchParams, host } = new URL(request.url);
 
-        console.log("FETCH", pathname, searchParams.get("hint"));
+        console.log({ message: "FETCH", pathname, hint: searchParams.get("hint") });
 
         if (pathname === "/region-placer/autoinfer" || pathname === "/region-placer/auxiliary") {
             const locationHint = searchParams.get("hint") ?? "eeur";
 
             // console.log("LOCATION HINT", locationHint);
 
-            // FIXME SUPER WEIRD that removing ALL the console.log below makes the tests hang.
-            // Keeping at least one console.log everything works fine. Vitest setup is buggy...
+            let cdnInfo = "";
+            try {
+                if (host.startsWith("localhost")) {
+                    cdnInfo = host;
+                } else {
+                    cdnInfo = (await fetch(`https://${host}/cdn-cgi/trace`)).text();
+                }
+            } catch (e) {
+                console.error({ message: "could not fetch CDN info from /cdn-cgi/trace", error: e })
+            }
+
             let stubToDipose = null;
             try {
                 if (pathname === "/region-placer/autoinfer") {
@@ -35,10 +44,10 @@ export default {
                 // console.log("TARGET PINGING", locationHint);
                 const result = await workerTarget.ping("boomer");
                 // console.log("RESPONDING", locationHint);
-                return new Response(`${result} @ ${targetLocationHint}`);
+                return new Response(`${result} @ ${targetLocationHint}\n${cdnInfo}`);
             } finally {
                 // DO NOT REMOVE FOR NOW.
-                console.log("DISPOSING", locationHint);
+                console.log({ message: "DISPOSING", locationHint });
                 if (stubToDipose) {
                     stubToDipose[Symbol.dispose]();
                 }

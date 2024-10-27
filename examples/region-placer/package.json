@@ -1,0 +1,16 @@
+{
+    "name": "region-placer-test",
+    "version": "0.1.0",
+    "description": "An example using RegionPlacer util.",
+    "devDependencies": {
+        "durable-utils": "file:../../npm_dist",
+        "wrangler": "^3.83.0"
+    },
+    "scripts": {
+        "dev": "npx wrangler dev",
+        "deploy": "npx wrangler deploy"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC"
+}
