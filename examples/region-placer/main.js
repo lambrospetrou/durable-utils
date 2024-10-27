@@ -42,7 +42,7 @@ export default {
                 // console.log("TARGET LOCATION", locationHint);
                 const targetLocationHint = await workerTarget.targetLocationHint();
                 // console.log("TARGET PINGING", locationHint);
-                const result = await workerTarget.ping("boomer");
+                const result = await workerTarget.ping("pong");
                 // console.log("RESPONDING", locationHint);
                 return new Response(`${result} @ ${targetLocationHint}\n${cdnInfo}`);
             } finally {
@@ -60,7 +60,7 @@ export default {
 
 export class TargetWorker extends RegionPlaceableWorkerEntrypoint {
     async ping(v) {
-        console.log("TargetWorker: hello from ping...", v);
+        console.log({ message: "TargetWorker: hello from ping...", v });
         // console.log("ping: BEFORE timeout...");
         // await new Promise(function (resolve: (value: unknown) => void) {
         //     setTimeout(() => resolve(undefined), 5_000);
