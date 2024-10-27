@@ -8,7 +8,8 @@
     },
     "scripts": {
         "dev": "npx wrangler dev",
-        "deploy": "npx wrangler deploy"
+        "deploy": "npx wrangler deploy",
+        "deploy:dryrun": "npx wrangler deploy --dry-run --outdir dist"
     },
     "keywords": [],
     "author": "",
