@@ -1,0 +1,27 @@
+name = "region-placer-test"
+main = "./main.js"
+compatibility_date = "2024-10-18"
+compatibility_flags = ["nodejs_compat"]
+
+workers_dev = true
+
+services = [
+	# Auxiliary Worker to place a given Worker name into a specific region.
+	{binding = "RegionPlacer", service="region-placer-test", entrypoint="RegionPlacer"},
+
+	# The user Worker we want to invoke in the specific region.
+	{binding = "TargetWorker", service="region-placer-test", entrypoint="TargetWorker"}
+]
+
+[observability]
+enabled = true
+
+[durable_objects]
+bindings = [
+	# Required DO to bind into our Worker project to be able to regionally place Worker calls.
+	{ name = "RegionPlacerDO", class_name = "RegionPlacerDO" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RegionPlacerDO"]
