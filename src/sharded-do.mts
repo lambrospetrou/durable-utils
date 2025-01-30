@@ -57,17 +57,43 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     /**
      * Execute a single request across all shards concurrently.
      * @param doer The callback function to execute with the Durable Object stub for each shard.
-     * @returns An array of results from the given `doer` callback function for each shard.
+     * @returns An array of results from the given `doer` callback function for each shard, and an array of errors for each shard that failed.
+     *          Items in the results array will be `undefined` if the shard failed, and similarly for the errors array.
      */
-    async all<R>(doer: (doStub: DurableObjectStub<T>, shard: number) => Promise<R>): Promise<Array<R>> {
+    async allMaybe<R>(doer: (doStub: DurableObjectStub<T>, shard: number) => Promise<R>): Promise<{
+        results: Array<R>;
+        errors: Array<unknown>;
+    }> {
         if (this.#options.numShards > 1000) {
-            throw new Error(`Too many shards [${this.#options.numShards}], Cloudflare Workers only supports up to 1000 subrequests.`);
+            throw new Error(
+                `Too many shards [${this.#options.numShards}], Cloudflare Workers only supports up to 1000 subrequests.`,
+            );
         }
-        return await this.pipelineRequests(this.#options.concurrency!, this.#options.numShards, async (shard) => {
+        return await this.pipelineRequests(this.#options.concurrency!, this.#options.numShards, false, async (shard) => {
             const doId = this.#doNamespace.idFromName(`fixed-sharded-do-${shard}`);
             const stub = this.#doNamespace.get(doId);
             return await doer(stub, shard);
         });
+    }
+
+    /**
+     * Execute a single request across all shards concurrently.
+     * @param doer The callback function to execute with the Durable Object stub for each shard.
+     * @returns An array of results from the given `doer` callback function for each shard.
+     */
+    async all<R>(doer: (doStub: DurableObjectStub<T>, shard: number) => Promise<R>): Promise<Array<R>> {
+        if (this.#options.numShards > 1000) {
+            throw new Error(
+                `Too many shards [${this.#options.numShards}], Cloudflare Workers only supports up to 1000 subrequests.`,
+            );
+        }
+        return (
+            await this.pipelineRequests(this.#options.concurrency!, this.#options.numShards, true, async (shard) => {
+                const doId = this.#doNamespace.idFromName(`fixed-sharded-do-${shard}`);
+                const stub = this.#doNamespace.get(doId);
+                return await doer(stub, shard);
+            })
+        ).results;
     }
 
     /**
@@ -77,18 +103,28 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
      */
     async *genAll<R>(doer: (doStub: DurableObjectStub<T>, shard: number) => Promise<R>): AsyncGenerator<R> {
         if (this.#options.numShards > 1000) {
-            throw new Error(`Too many shards [${this.#options.numShards}], Cloudflare Workers only supports up to 1000 subrequests.`);
+            throw new Error(
+                `Too many shards [${this.#options.numShards}], Cloudflare Workers only supports up to 1000 subrequests.`,
+            );
         }
-        for await (const result of this.genPipelineRequests(this.#options.concurrency!, this.#options.numShards, async (shard) => {
-            const doId = this.#doNamespace.idFromName(`fixed-sharded-do-${shard}`);
-            const stub = this.#doNamespace.get(doId);
-            return await doer(stub, shard);
-        })) {
+        for await (const result of this.genPipelineRequests(
+            this.#options.concurrency!,
+            this.#options.numShards,
+            async (shard) => {
+                const doId = this.#doNamespace.idFromName(`fixed-sharded-do-${shard}`);
+                const stub = this.#doNamespace.get(doId);
+                return await doer(stub, shard);
+            },
+        )) {
             yield result;
         }
     }
 
-    private async *genPipelineRequests<R>(concurrency: number, n: number, doer: (shard: number) => Promise<R>): AsyncGenerator<R> {
+    private async *genPipelineRequests<R>(
+        concurrency: number,
+        n: number,
+        doer: (shard: number) => Promise<R>,
+    ): AsyncGenerator<R> {
         const results: Array<Promise<R>> = Array(n).fill(null);
         let idxAwait = 0;
         for (let shard = 0; shard < n; shard++) {
@@ -103,20 +139,40 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
         for (; idxAwait < n; idxAwait++) {
             yield await results[idxAwait];
         }
-    } 
+    }
 
-    private async pipelineRequests<R>(concurrency: number, n: number, doer: (shard: number) => Promise<R>): Promise<Array<R>> {
-        const results: Array<R> = Array(n).fill(null);
+    private async pipelineRequests<R>(
+        concurrency: number,
+        n: number,
+        earlyReturn: boolean,
+        doer: (shard: number) => Promise<R>,
+    ): Promise<{
+        results: Array<R>;
+        errors: Array<unknown>;
+    }> {
+        const results: Array<R> = Array(n).fill(undefined);
+        const errors: Array<unknown> = Array(n).fill(undefined);
         let i = 0;
         const next = async () => {
             if (i >= n) {
                 return;
             }
             const j = i++;
-            results[j] = await doer(j);
+            try {
+                results[j] = await doer(j);
+            } catch (e) {
+                if (earlyReturn) {
+                    throw e;
+                }
+                errors[j] = e;
+            }
             await next();
         };
-        await Promise.all(Array(concurrency).fill(0).map(() => next()));
-        return results;
-    } 
+        await Promise.all(
+            Array(concurrency)
+                .fill(0)
+                .map(() => next()),
+        );
+        return { results, errors };
+    }
 }

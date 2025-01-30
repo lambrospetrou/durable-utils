@@ -39,7 +39,35 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
             return await stub.actorId();
         });
         expect(new Set(ids).size).toEqual(11);
-        expect(new Set(shards).size).toEqual(11);
+        expect(shards).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    });
+
+    it("allMaybe()", async () => {
+        const sdo = new FixedShardedDO(env.SQLDO, { numShards: 11 });
+
+        const shards: number[] = [];
+        const {results: ids, errors} = await sdo.allMaybe(async (stub, shard) => {
+            shards.push(shard);
+            return await stub.actorId();
+        });
+        expect(errors).toEqual(Array(11).fill(undefined));
+        expect(new Set(ids).size).toEqual(11);
+        expect(shards).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    });
+
+    it("allMaybe() - with errors", async () => {
+        const sdo = new FixedShardedDO(env.SQLDO, { numShards: 11 });
+
+        const shards: number[] = [];
+        const {results: ids, errors} = await sdo.allMaybe(async (stub, shard) => {
+            shards.push(shard);
+            if (shard % 2 === 0) {
+                throw new Error("test-error");
+            }
+            return await stub.echo(String(shard));
+        });
+        expect(errors).toEqual(Array(11).fill(undefined).map((_, i) => (i % 2 === 0 ? new Error("test-error") : undefined)));
+        expect(ids).toEqual(Array(11).fill(undefined).map((_, i) => (i % 2 === 0 ? undefined : String(i))));
         expect(shards).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     });
 
@@ -55,7 +83,6 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
             ids.push(res);
         }
         expect(new Set(ids).size).toEqual(11);
-        expect(new Set(shards).size).toEqual(11);
         expect(shards).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     });
 
