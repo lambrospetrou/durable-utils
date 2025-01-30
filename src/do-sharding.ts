@@ -1,4 +1,4 @@
-import { DurableObjectNamespace, DurableObjectStub, Rpc } from "@cloudflare/workers-types";
+import { DurableObjectGetOptions, DurableObjectLocationHint, DurableObjectNamespace, DurableObjectNamespaceGetDurableObjectOptions, DurableObjectStub, Rpc } from "@cloudflare/workers-types";
 import { xxHash32 } from "js-xxhash";
 
 // Golden Ratio constant used for better hash scattering
@@ -22,6 +22,13 @@ export interface FixedShardedDOOptions {
      * The default value is 10.
      */
     concurrency?: number;
+
+    /**
+     * A function that returns a location hint for a specific shard.
+     * The location hint is used to specify the region where the Durable Object should be placed.
+     * If the function returns `undefined`, the Durable Object will be placed in the closest region.
+     */
+    shardLocationHintFn?: (shard: number) => DurableObjectLocationHint | undefined;
 }
 
 export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
@@ -50,7 +57,7 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     async one<R>(shardKey: string, doer: (doStub: DurableObjectStub<T>) => Promise<R>): Promise<R> {
         const shard = xxHash32(shardKey, GOLDEN_RATIO) % this.#options.numShards;
         const doId = this.#doNamespace.idFromName(`fixed-sharded-do-${shard}`);
-        const stub = this.#doNamespace.get(doId);
+        const stub = this.#doNamespace.get(doId, this.#stubOptions(shard));
         return await doer(stub);
     }
 
@@ -72,7 +79,7 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
         }
         return await this.#pipelineRequests(this.#options.concurrency!, this.#options.numShards, false, async (shard) => {
             const doId = this.#doNamespace.idFromName(`fixed-sharded-do-${shard}`);
-            const stub = this.#doNamespace.get(doId);
+            const stub = this.#doNamespace.get(doId, this.#stubOptions(shard));
             return await doer(stub, shard);
         });
     }
@@ -92,7 +99,7 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
         return (
             await this.#pipelineRequests(this.#options.concurrency!, this.#options.numShards, true, async (shard) => {
                 const doId = this.#doNamespace.idFromName(`fixed-sharded-do-${shard}`);
-                const stub = this.#doNamespace.get(doId);
+                const stub = this.#doNamespace.get(doId, this.#stubOptions(shard));
                 return await doer(stub, shard);
             })
         ).results;
@@ -115,7 +122,7 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
             this.#options.numShards,
             async (shard) => {
                 const doId = this.#doNamespace.idFromName(`fixed-sharded-do-${shard}`);
-                const stub = this.#doNamespace.get(doId);
+                const stub = this.#doNamespace.get(doId, this.#stubOptions(shard));
                 return await doer(stub, shard);
             },
         )) {
@@ -177,5 +184,13 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
                 .map(() => next()),
         );
         return { results, errors };
+    }
+
+    #stubOptions(shard: number): DurableObjectNamespaceGetDurableObjectOptions {
+        const options: DurableObjectNamespaceGetDurableObjectOptions = {};
+        if (this.#options.shardLocationHintFn) {
+            options.locationHint = this.#options.shardLocationHintFn(shard);
+        }
+        return options;
     }
 }
