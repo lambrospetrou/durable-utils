@@ -1,8 +1,7 @@
-import { env, listDurableObjectIds, runInDurableObject } from "cloudflare:test";
-import { DurableObjectState } from "@cloudflare/workers-types";
+import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { Env, SQLiteDO } from "./workers-test";
-import { FixedShardedDO } from "../src/sharded-do.mjs";
+import { Env } from "./workers-test";
+import { FixedShardedDO } from "../src/do-sharding";
 
 declare module "cloudflare:test" {
     interface ProvidedEnv extends Env {}
