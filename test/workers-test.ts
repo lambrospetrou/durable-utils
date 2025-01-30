@@ -1,16 +1,17 @@
-import { DurableObjectNamespace } from "@cloudflare/workers-types/experimental";
+import { DurableObjectNamespace } from "@cloudflare/workers-types";
 import { DurableObject, RpcStub } from "cloudflare:workers";
 
 import {
     RegionPlaceableTarget,
     RegionPlaceableWorkerEntrypoint,
     RegionPlacer,
+    RegionPlacerDO,
 } from "../src/experimental/region-placer";
 export { RegionPlacer, RegionPlacerDO } from "../src/experimental/region-placer";
 
 export interface Env {
-    SQLDO: DurableObjectNamespace;
-    RegionPlacerDO: DurableObjectNamespace;
+    SQLDO: DurableObjectNamespace<SQLiteDO>;
+    RegionPlacerDO: DurableObjectNamespace<RegionPlacerDO>;
 
     RegionPlacer: Service<RegionPlacer>;
     TargetWorker: Service<TargetWorker>;
@@ -22,6 +23,14 @@ export class SQLiteDO extends DurableObject<Env> {
         readonly env: Env,
     ) {
         super(ctx, env);
+    }
+
+    async actorId() {
+        return String(this.ctx.id);
+    }
+
+    async echo(s: string) {
+        return s;
     }
 }
 

@@ -4,14 +4,14 @@
         "target": "ESNext",
         "declaration": true,
         "esModuleInterop": true,
-        "moduleResolution": "NodeNext",
-        "module": "NodeNext",
+        "moduleResolution": "bundler",
+        "module": "ESNext",
         "forceConsistentCasingInFileNames": true,
         "strict": true,
         "skipLibCheck": true,
         "isolatedModules": true,
         "stripInternal": true,
-        "types": ["@cloudflare/workers-types/experimental"]
+        "types": ["@cloudflare/workers-types"]
     },
     "exclude": ["node_modules", "dist", "test/**/*.ts"]
 }

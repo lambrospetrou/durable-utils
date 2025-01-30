@@ -195,7 +195,7 @@ describe("happy paths", async () => {
             const stub = env.SQLDO.get(id);
 
             await runInDurableObject(stub, async (instance: SQLiteDO, state: DurableObjectState) => {
-                expect(
+                await expect(
                     async () =>
                         await makeM(state, [
                             {
@@ -223,7 +223,7 @@ describe("happy paths", async () => {
             const stub = env.SQLDO.get(id);
 
             await runInDurableObject(stub, async (instance: SQLiteDO, state: DurableObjectState) => {
-                expect(
+                await expect(
                     async () =>
                         await makeM(state, [
                             {
