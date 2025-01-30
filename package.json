@@ -1,6 +1,6 @@
 {
     "name": "durable-utils",
-    "version": "0.1.4",
+    "version": "0.2.0",
     "description": "Utilities for Cloudflare Durable Objects and Workers, including SQL migrations and stream helpers.",
     "module": "index.esm.js",
     "main": "index.js",
@@ -21,7 +21,9 @@
         "cloudflare",
         "durable-objects",
         "workers",
-        "sqlite"
+        "sqlite",
+        "sharding",
+        "sharded-durable-objects"
     ],
     "author": "Lambros Petrou (lambrospetrou.com)",
     "repository": {
