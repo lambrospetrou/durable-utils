@@ -101,7 +101,7 @@ The TypeScript types have extensive documentation on the specifics, so do read t
 
 In your Worker code (or elsewhere) when you want to call a method `actionA()` on a Durable Object of namespace `DO_ABC` you would have the following:
 
-```
+```javascript
 import { FixedShardedDO } from "durable-utils/do-sharding";
 
 const sdo = new FixedShardedDO(env.DO_ABC, { numShards: 11 });
