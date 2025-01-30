@@ -4,7 +4,7 @@ import { build } from "esbuild";
 const { dependencies, peerDependencies } = readFileSync("./package.json", "utf-8");
 
 const sharedConfig = {
-    entryPoints: ["src/index.ts", "src/sql-migrations.ts", "src/experimental/region-placer.ts"],
+    entryPoints: ["src/index.ts", "src/sql-migrations.ts", "src/sharded-do.mts", "src/experimental/region-placer.ts"],
     bundle: true,
     // minify: true,
     external: [

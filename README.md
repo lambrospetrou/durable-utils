@@ -2,6 +2,12 @@
 
 Utilities for Cloudflare [Durable Objects](https://developers.cloudflare.com/durable-objects/) and Cloudflare [Workers](https://developers.cloudflare.com/workers/).
 
+**Table of contents**
+
+- [Install](#install)
+- [SQLite Schema migrations](#sqlite-schema-migrations)
+- [FixedShardedDO](#fixedshardeddo)
+
 ## Install
 
 ```sh
@@ -80,4 +86,42 @@ export class TenantDO extends DurableObject {
         return this.sql.exec("SELECT * FROM wikis;").toArray();
     }
 }
+```
+
+## FixedShardedDO
+
+`FixedShardedDO` is a helper making it easier to query `N` Durable Objects with the simplicity of single DO.
+
+**Warning:** Once you start using `FixedShardedDO` with a specific shard size, you should NEVER change its number of shards.
+At the moment, there is no re-sharding of the data stored by the Durable Objects, thus it's not safe to change the number of shards.
+
+The TypeScript types have extensive documentation on the specifics, so do read them either through your IDE, or directly the `sharded-do.d.ts` types.
+
+### Example
+
+In your Worker code (or elsewhere) when you want to call a method `actionA()` on a Durable Object of namespace `DO_ABC` you would have the following:
+
+```
+const sdo = new FixedShardedDO(env.DO_ABC, { numShards: 11 });
+
+// Query only the shard that maps to the shard key.
+const shardKey = "some-key-here"
+const resultOfActionA = await sdo.once(shardKey, async (stub, shard) => {
+    return await stub.actionA();
+});
+
+// Query all 11 shards and get their results in an array, or will fail with the first error thrown.
+const resultOfActionA = await sdo.all(async (stub, shard) => {
+    return await stub.actionA();
+});
+
+// Query all 11 shards and get their results or their errors.
+// The returned object holds one array with the result or `undefined` for each shard,
+// and one array with an error or `undefined` for each shard.
+const {
+    results: resultOfActionA,
+    errors
+} = await sdo.allMaybe(async (stub, shard) => {
+    return await stub.actionA();
+});
 ```
