@@ -1,6 +1,5 @@
 import { DurableObjectNamespace, DurableObjectStub } from "@cloudflare/workers-types";
-import xxhash from "xxhash-wasm";
-const { h32 } = await xxhash();
+import { xxHash32 } from "js-xxhash";
 
 // Golden Ratio constant used for better hash scattering
 // See https://softwareengineering.stackexchange.com/a/402543
@@ -17,6 +16,11 @@ interface FixedShardedDOOptions {
      */
     numShards: number;
 
+    /**
+     * The number of concurrent subrequests to make to the DOs.
+     * This value should be kept low to avoid hitting the Cloudflare subrequest limit.
+     * The default value is 10.
+     */
     concurrency?: number;
 }
 
@@ -37,14 +41,24 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
         }
     }
 
+    /**
+     * Execute a single request to a specific shard.
+     * @param shardKey The key to use to determine the shard to use.
+     * @param doer The callback function to execute with the Durable Object stub for the chosen shard.
+     * @returns The result of the given `doer` callback function.
+     */
     async one<R>(shardKey: string, doer: (doStub: DurableObjectStub<T>) => Promise<R>): Promise<R> {
-        const shard = h32(shardKey, GOLDEN_RATIO) % this.#options.numShards;
+        const shard = xxHash32(shardKey, GOLDEN_RATIO) % this.#options.numShards;
         const doId = this.#doNamespace.idFromName(`fixed-sharded-do-${shard}`);
         const stub = this.#doNamespace.get(doId);
         return await doer(stub);
     }
 
-
+    /**
+     * Execute a single request across all shards concurrently.
+     * @param doer The callback function to execute with the Durable Object stub for each shard.
+     * @returns An array of results from the given `doer` callback function for each shard.
+     */
     async all<R>(doer: (doStub: DurableObjectStub<T>, shard: number) => Promise<R>): Promise<Array<R>> {
         if (this.#options.numShards > 1000) {
             throw new Error(`Too many shards [${this.#options.numShards}], Cloudflare Workers only supports up to 1000 subrequests.`);
@@ -56,6 +70,11 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
         });
     }
 
+    /**
+     * Execute a single request across all shards concurrently using an async generator.
+     * @param doer The callback function to execute with the Durable Object stub for each shard.
+     * @returns An async generator of results from the given `doer` callback function for each shard.
+     */
     async *genAll<R>(doer: (doStub: DurableObjectStub<T>, shard: number) => Promise<R>): AsyncGenerator<R> {
         if (this.#options.numShards > 1000) {
             throw new Error(`Too many shards [${this.#options.numShards}], Cloudflare Workers only supports up to 1000 subrequests.`);
