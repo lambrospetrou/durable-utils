@@ -108,7 +108,7 @@ const sdo = new FixedShardedDO(env.DO_ABC, { numShards: 11 });
 
 // Query only the shard that maps to the shard key.
 const shardKey = "some-key-here"
-const resultOfActionA = await sdo.once(shardKey, async (stub, shard) => {
+const resultOfActionA = await sdo.one(shardKey, async (stub, shard) => {
     return await stub.actionA();
 });
 
