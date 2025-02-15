@@ -6,6 +6,7 @@ import {
     Rpc,
 } from "@cloudflare/workers-types";
 import { xxHash32 } from "js-xxhash";
+import { stubByName } from "./do-utils";
 
 // Golden Ratio constant used for better hash scattering
 // See https://softwareengineering.stackexchange.com/a/402543
@@ -37,8 +38,14 @@ export interface FixedShardedDOOptions {
     shardLocationHintFn?: (shard: ShardId) => DurableObjectLocationHint | undefined;
 }
 
+/**
+ * A unique identifier for each shard. Zero-based index.
+ */
 export type ShardId = number;
 
+/**
+ * The result of a single request to a shard using the `trySome/tryAll` methods.
+ */
 export type TryResult<R> =
     | {
           ok: true;
@@ -51,9 +58,15 @@ export type TryResult<R> =
           error: unknown;
       };
 
+/**
+ * The options to control the behavior of the `trySome` and `tryAll` methods.
+ */
 export type TryOptions = {
+    /**
+     * A function to select which shards to use for the requests.
+     * The function should return `true` for shards that should be used, and `false` for shards that should be skipped.
+     */
     filterFn: (shardId: ShardId) => boolean;
-    shouldRetryFn?: (error: unknown) => boolean;
 };
 
 /**
@@ -116,7 +129,7 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
         const responses = await this.#pipelineRequests(
             this.#options.concurrency,
             this.#options.numShards,
-            {...options, earlyReturn: false},
+            { ...options, earlyReturn: false },
             async (shard) => {
                 const stub = this.#stub(shard);
                 return await doer(stub, shard);
@@ -139,18 +152,20 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
         const responses = await this.#pipelineRequests(
             this.#options.concurrency,
             this.#options.numShards,
-            {...options, earlyReturn: true},
+            { ...options, earlyReturn: true },
             async (shard) => {
                 const stub = this.#stub(shard);
                 return await doer(stub, shard);
             },
         );
-        return [...responses.results.values()].sort((a, b) => a.shard - b.shard).map((r) => {
-            if (!r.ok) {
-                throw r.error;
-            }
-            return r.result;
-        });
+        return [...responses.results.values()]
+            .sort((a, b) => a.shard - b.shard)
+            .map((r) => {
+                if (!r.ok) {
+                    throw r.error;
+                }
+                return r.result;
+            });
     }
 
     /**
@@ -320,8 +335,7 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     }
 
     #stub(shard: ShardId): DurableObjectStub<T> {
-        const doId = this.#doNamespace.idFromName(`fixed-sharded-do-${shard}`);
-        return this.#doNamespace.get(doId, this.#stubOptions(shard));
+        return stubByName(this.#doNamespace, `fixed-sharded-do-${shard}`, this.#stubOptions(shard));
     }
 
     #stubOptions(shard: ShardId): DurableObjectNamespaceGetDurableObjectOptions {
