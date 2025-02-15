@@ -69,7 +69,7 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
      *          Items in the results array will be `undefined` if the shard failed, and similarly for the errors array.
      */
     async allMaybe<R>(doer: (doStub: DurableObjectStub<T>, shard: number) => Promise<R>): Promise<{
-        results: Array<R>;
+        results: Array<R | undefined>;
         errors: Array<unknown>;
     }> {
         if (this.#options.numShards > 1000) {
@@ -90,7 +90,7 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
      * @returns An array of results from the given `doer` callback function for each shard.
      *          In case of an error, the function will throw the error immediately.
      */
-    async all<R>(doer: (doStub: DurableObjectStub<T>, shard: number) => Promise<R>): Promise<Array<R>> {
+    async all<R>(doer: (doStub: DurableObjectStub<T>, shard: number) => Promise<R>): Promise<Array<R | undefined>> {
         if (this.#options.numShards > 1000) {
             throw new Error(
                 `Too many shards [${this.#options.numShards}], Cloudflare Workers only supports up to 1000 subrequests.`,
@@ -157,10 +157,10 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
         earlyReturn: boolean,
         doer: (shard: number) => Promise<R>,
     ): Promise<{
-        results: Array<R>;
+        results: Array<R | undefined>;
         errors: Array<unknown>;
     }> {
-        const results: Array<R> = Array(n).fill(undefined);
+        const results: Array<R | undefined> = Array(n).fill(undefined);
         const errors: Array<unknown> = Array(n).fill(undefined);
         let i = 0;
         const next = async () => {
