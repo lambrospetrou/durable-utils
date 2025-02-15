@@ -78,6 +78,10 @@ export type AllMaybeResult<R> = {
     hasErrors: boolean;
 };
 
+/**
+ * A utility class to interact with a fixed number of sharded Durable Objects.
+ * This class will automatically hash the given key to determine the shard to use.
+ */
 export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     #doNamespace: DurableObjectNamespace<T>;
     #options: FixedShardedDOOptions & { concurrency: number };
@@ -102,25 +106,47 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     }
 
     /**
-     * Execute a single request with the given shardKey.
+     * Execute a single request against the Durable Object responsible for the given shardKey.
+     * @param doer The callback function to execute with the Durable Object stub for each shard.
+     * @param options The options to control the behavior of the `tryOne` function.
+     * @returns An array of the results from the given `doer` callback function for each shard,
+     *          Each item in the array will be a `TryResult` object with the `ok` property indicating success or failure.
+     */
+    async tryOne<R>(
+        shardKey: string,
+        doer: (doStub: DurableObjectStub<T>, shard: ShardId) => Promise<R>,
+        options?: Omit<TryOptions, "filterFn">,
+    ): Promise<TryResult<R>> {
+        const shard = this.#shardShardKey(shardKey);
+        const stub = this.#stub(shard);
+        try {
+            return { ok: true, shard, result: await doer(stub, shard) };
+        } catch (e) {
+            return { ok: false, shard, error: e };
+        }
+    }
+
+    /**
+     * Execute a single request against the Durable Object responsible for the given shardKey.
      * @param shardKey The key to hash to determine the shard to use. The key will be hashed to determine the shard.
      * @param doer The callback function to execute with the Durable Object stub for the chosen shard.
-     * @returns The result of the given `doer` callback function.
+     * @returns The result of the given `doer` callback function. If `doer()` throws the error is propagated.
      */
     async one<R>(shardKey: string, doer: (doStub: DurableObjectStub<T>) => Promise<R>): Promise<R> {
-        const shard = xxHash32(shardKey, GOLDEN_RATIO) % this.#options.numShards;
-        const stub = this.#stub(shard);
-        return await doer(stub);
+        const response = await this.tryOne(shardKey, doer, {});
+        if (!response.ok) {
+            throw response.error;
+        }
+        return response.result;
     }
 
     /**
      * Execute a request to the shards selected by the `options.filterFn` callback, concurrently.
      * @param doer The callback function to execute with the Durable Object stub for each shard.
      * @param options The options to control the behavior of the `trySome` function.
-     * @returns An array of results from the given `doer` callback function for each shard,
-     *          and an array of errors for each shard that failed.
+     * @returns An array of the results from the given `doer` callback function for each shard,
+     *          Each item in the array will be a `TryResult` object with the `ok` property indicating success or failure.
      *          Only shards that pass the `options.filterFn` will be returned.
-     *          Items in the results array will be `undefined` if the shard failed, and similarly for the errors array.
      */
     async trySome<R>(
         doer: (doStub: DurableObjectStub<T>, shard: ShardId) => Promise<R>,
@@ -143,6 +169,7 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
      * @param doer The callback function to execute with the Durable Object stub for each shard.
      * @param options The options to control the behavior of the `trySome` function.
      * @returns An array of results from the given `doer` callback function for each filtered shard.
+     *          Only shards that pass the `options.filterFn` will be returned.
      *          In case of an error, the function will throw the error immediately.
      */
     async some<R>(
@@ -171,9 +198,8 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     /**
      * Execute a request to each of the shards, concurrently.
      * @param doer The callback function to execute with the Durable Object stub for each shard.
-     * @returns An array of results from the given `doer` callback function for each shard,
-     *          and an array of errors for each shard that failed.
-     *          Items in the results array will be `undefined` if the shard failed, and similarly for the errors array.
+     * @returns An array of the results from the given `doer` callback function for each shard,
+     *          Each item in the array will be a `TryResult` object with the `ok` property indicating success or failure.
      */
     async tryAll<R>(doer: (doStub: DurableObjectStub<T>, shard: ShardId) => Promise<R>): Promise<Array<TryResult<R>>> {
         if (this.#options.numShards > 1000) {
@@ -332,6 +358,11 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
         for (; idxAwait < n; idxAwait++) {
             yield await results[idxAwait];
         }
+    }
+
+    #shardShardKey(shardKey: string): ShardId {
+        const shard = xxHash32(shardKey, GOLDEN_RATIO) % this.#options.numShards;
+        return shard;
     }
 
     #stub(shard: ShardId): DurableObjectStub<T> {

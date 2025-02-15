@@ -2,6 +2,7 @@ import { env } from "cloudflare:test";
 import { assert, describe, expect, it } from "vitest";
 import { Env } from "./workers-test";
 import { FixedShardedDO } from "../src/do-sharding";
+import { a } from "vitest/dist/chunks/suite.B2jumIFP.js";
 
 declare module "cloudflare:test" {
     interface ProvidedEnv extends Env {}
@@ -35,6 +36,23 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
         expect(result2).toBe("test-02");
 
         expect(id1).not.to.equal(id2);
+    });
+
+    it("tryOne() with errors", async () => {
+        const sdo = new FixedShardedDO(env.SQLDO, { numShards: 10 });
+        const response1 = await sdo.tryOne("test", async (stub) => {
+            return await stub.echo("test-01");
+        });
+        expect(response1.ok).toBe(true);
+        assert(response1.ok === true);
+        expect(response1.result).toBe("test-01");
+
+        const response2 = await sdo.tryOne("test2", async (stub) => {
+            throw new Error("test-error");
+        });
+        expect(response2.ok).toBe(false);
+        assert(response2.ok === false);
+        expect(response2.error).toEqual(new Error("test-error"));
     });
 
     it("all()", async () => {
