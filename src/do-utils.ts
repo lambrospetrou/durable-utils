@@ -27,5 +27,5 @@ export function stubByName<T extends Rpc.DurableObjectBranded | undefined>(
  * @param err
  */
 export function isErrorRetryable(err: unknown): boolean {
-    return (err as any)?.retryable === true && (err as any)?.overloaded === false;
+    return (err as any)?.retryable && !((err as any)?.overloaded);
 }
