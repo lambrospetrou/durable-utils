@@ -101,6 +101,9 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
         }
     }
 
+    /**
+     * The number of shards used to spread out the load. Immutable after creation.
+     */
     get N(): number {
         return this.#options.numShards;
     }
