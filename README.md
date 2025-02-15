@@ -118,12 +118,20 @@ const resultOfActionA = await sdo.all(async (stub, shard) => {
 });
 
 // Query all 11 shards and get their results or their errors.
-// The returned object holds one array with the result or `undefined` for each shard,
-// and one array with an error or `undefined` for each shard.
 const {
     results: resultOfActionA,
     errors
 } = await sdo.tryAll(async (stub, shard) => {
     return await stub.actionA();
+});
+
+// Query only the even shards out of the 11 and get their results or their errors.
+const {
+    results: resultOfActionA,
+    errors
+} = await sdo.trySome(async (stub, shard) => {
+    return await stub.actionA();
+}, {
+    filterFn: (shard) => shard % 2 === 0,
 });
 ```

@@ -1,5 +1,5 @@
 import { env } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { Env } from "./workers-test";
 import { FixedShardedDO } from "../src/do-sharding";
 
@@ -8,6 +8,14 @@ declare module "cloudflare:test" {
 }
 
 describe("FixedShardedDO", { timeout: 20_000 }, async () => {
+    it("N", async () => {
+        const randomNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        randomNumbers.forEach((n) => {
+            const sdo = new FixedShardedDO(env.SQLDO, { numShards: n*100 });
+            expect(sdo.N).toBe(n*100);
+        });
+    });
+
     it("one()", async () => {
         const sdo = new FixedShardedDO(env.SQLDO, { numShards: 10 });
         const id1 = await sdo.one("test", async (stub) => {
@@ -45,11 +53,13 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
         const sdo = new FixedShardedDO(env.SQLDO, { numShards: 11 });
 
         const shards: number[] = [];
-        const {results: ids, errors} = await sdo.tryAll(async (stub, shard) => {
+        const results = await sdo.tryAll(async (stub, shard) => {
             shards.push(shard);
             return await stub.actorId();
         });
-        expect(errors).toEqual(Array(11).fill(undefined));
+        const errors = results.filter(r => !r.ok).map((r) => r.error);
+        expect(errors).toEqual([]);
+        const ids = results.filter(r => r.ok).map((r) => r.result);
         expect(new Set(ids).size).toEqual(11);
         expect(shards).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     });
@@ -58,16 +68,54 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
         const sdo = new FixedShardedDO(env.SQLDO, { numShards: 11 });
 
         const shards: number[] = [];
-        const {results: ids, errors} = await sdo.tryAll(async (stub, shard) => {
+        const results = await sdo.tryAll(async (stub, shard) => {
             shards.push(shard);
             if (shard % 2 === 0) {
                 throw new Error("test-error");
             }
             return await stub.echo(String(shard));
         });
-        expect(errors).toEqual(Array(11).fill(undefined).map((_, i) => (i % 2 === 0 ? new Error("test-error") : undefined)));
-        expect(ids).toEqual(Array(11).fill(undefined).map((_, i) => (i % 2 === 0 ? undefined : String(i))));
+
+        results.forEach((r, i) => {
+            if (i % 2 === 0) {
+                expect(r.ok).toBe(false);
+                assert(r.ok === false);
+                expect(r.error).toEqual(new Error("test-error"));
+            } else {
+                expect(r.ok).toBe(true);
+                assert(r.ok === true);
+                expect(r.result).toEqual(String(i));
+            }
+        });
         expect(shards).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    });
+
+    it("trySome()", async () => {
+        const sdo = new FixedShardedDO(env.SQLDO, { numShards: 11 });
+
+        const shards: number[] = [];
+        const ids = new Set<string>();
+        const results = await sdo.trySome(
+            async (stub, shard) => {
+                shards.push(shard);
+                ids.add(await stub.actorId());
+                if (shard === 3) {
+                    throw new Error("test-error");
+                }
+                return `some-${shard}`;
+            },
+            {
+                filterFn: (shard) => shard % 2 === 0 || shard === 3,
+            },
+        );
+        expect(shards).toEqual([0, 2, 3, 4, 6, 8, 10]);
+        expect(new Set(ids).size).toEqual(7);
+        const failed = results.filter((r) => !r.ok);
+        expect(failed).toEqual([{ ok: false, error: new Error("test-error"), shard: 3 }]);
+        const oked = results.filter((r) => r.ok);
+        oked.forEach((r, i) => {
+            expect(r.result).toEqual(`some-${i * 2}`);
+        });
     });
 
     it("genAll()", async () => {
@@ -134,5 +182,4 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
             expect(new Set(shards).size).toEqual(10);
         });
     });
-
 });
