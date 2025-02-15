@@ -6,7 +6,8 @@ import {
     Rpc,
 } from "@cloudflare/workers-types";
 import { xxHash32 } from "js-xxhash";
-import { stubByName } from "./do-utils";
+import { isErrorRetryable, stubByName } from "./do-utils";
+import { tryN } from "./retries";
 
 // Golden Ratio constant used for better hash scattering
 // See https://softwareengineering.stackexchange.com/a/402543
@@ -67,6 +68,15 @@ export type TryOptions = {
      * The function should return `true` for shards that should be used, and `false` for shards that should be skipped.
      */
     filterFn: (shardId: ShardId) => boolean;
+
+    /**
+     * A function to determine if a failed request should be retried.
+     * The arguments of the function are:
+     * - the error thrown
+     * - the attempt number (value 2 means it's the first retry after the failed first request)
+     * - the shard ID the request was made to
+     */
+    shouldRetry?: (error: unknown, attempt: number, shard: ShardId) => boolean;
 };
 
 /**
@@ -228,8 +238,12 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
         return await this.some(doer, { filterFn: (_shard) => true });
     }
 
+    //////////////////////////////////////////////////////
+    // DEPRECATED
+
     /**
      * Execute a request to each of the shards, concurrently.
+     * @deprecated Use `all` or `tryAll` instead.
      * @param doer The callback function to execute with the Durable Object stub for each shard.
      * @returns An async generator of results from the given `doer` callback function for each shard.
      *          In case of an error, the function will throw the error immediately.
@@ -251,9 +265,6 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
             yield result;
         }
     }
-
-    //////////////////////////////////////////////////////
-    // DEPRECATED
 
     /**
      * Execute a request to each of the shards, concurrently.
@@ -311,28 +322,36 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
             if (i >= n) {
                 return;
             }
-            const j = i++;
+            const shard = i++;
             try {
-                if (!tryOptions.filterFn(j)) {
-                    return;
+                if (!tryOptions.filterFn(shard)) {
+                    // Skip this one and go to the next shard.
+                    return await next();
                 }
-                results.set(j, {
+                const result = await tryN(
+                    Number.POSITIVE_INFINITY,
+                    async () => await doer(shard),
+                    (e, attempt) => {
+                        return !!tryOptions.shouldRetry?.(e, attempt, shard);
+                    },
+                );
+                results.set(shard, {
                     ok: true,
-                    result: await doer(j),
-                    shard: j,
+                    result: result,
+                    shard,
                 });
             } catch (e) {
                 if (tryOptions.earlyReturn) {
                     throw e;
                 }
                 hasErrors = true;
-                results.set(j, {
+                results.set(shard, {
                     ok: false,
-                    shard: j,
+                    shard: shard,
                     error: e,
                 });
             }
-            await next();
+            return await next();
         };
         await Promise.all(
             Array(concurrency)

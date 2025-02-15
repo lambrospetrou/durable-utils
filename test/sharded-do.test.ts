@@ -2,7 +2,6 @@ import { env } from "cloudflare:test";
 import { assert, describe, expect, it } from "vitest";
 import { Env } from "./workers-test";
 import { FixedShardedDO } from "../src/do-sharding";
-import { a } from "vitest/dist/chunks/suite.B2jumIFP.js";
 
 declare module "cloudflare:test" {
     interface ProvidedEnv extends Env {}
@@ -12,13 +11,13 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
     it("N", async () => {
         const randomNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         randomNumbers.forEach((n) => {
-            const sdo = new FixedShardedDO(env.SQLDO, { numShards: n*100 });
-            expect(sdo.N).toBe(n*100);
+            const sdo = new FixedShardedDO(env.SQLDO, { numShards: n * 100 });
+            expect(sdo.N).toBe(n * 100);
         });
     });
 
     it("one()", async () => {
-        const sdo = new FixedShardedDO(env.SQLDO, { numShards: 10 });
+        const sdo = new FixedShardedDO(env.SQLDO, { numShards: 7 });
         const id1 = await sdo.one("test", async (stub) => {
             return await stub.actorId();
         });
@@ -39,7 +38,7 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
     });
 
     it("tryOne() with errors", async () => {
-        const sdo = new FixedShardedDO(env.SQLDO, { numShards: 10 });
+        const sdo = new FixedShardedDO(env.SQLDO, { numShards: 7 });
         const response1 = await sdo.tryOne("test", async (stub) => {
             return await stub.echo("test-01");
         });
@@ -75,9 +74,9 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
             shards.push(shard);
             return await stub.actorId();
         });
-        const errors = results.filter(r => !r.ok).map((r) => r.error);
+        const errors = results.filter((r) => !r.ok).map((r) => r.error);
         expect(errors).toEqual([]);
-        const ids = results.filter(r => r.ok).map((r) => r.result);
+        const ids = results.filter((r) => r.ok).map((r) => r.result);
         expect(new Set(ids).size).toEqual(11);
         expect(shards).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     });
@@ -109,7 +108,8 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
     });
 
     it("trySome()", async () => {
-        const sdo = new FixedShardedDO(env.SQLDO, { numShards: 11 });
+        // Use less concurrency than shards to test the iteration properly.
+        const sdo = new FixedShardedDO(env.SQLDO, { numShards: 11, concurrency: 3 });
 
         const shards: number[] = [];
         const ids = new Set<string>();
@@ -149,6 +149,39 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
         }
         expect(new Set(ids).size).toEqual(11);
         expect(shards).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    });
+
+    describe("retries", async () => {
+        it("trySome() with retries", async () => {
+            const sdo = new FixedShardedDO(env.SQLDO, { numShards: 11, concurrency: 3 });
+
+            let totalShouldRetry = 0;
+            let errors = 0;
+            const responses = await sdo.trySome(
+                async (stub, shard) => {
+                    if (shard != 2 && Math.random() < 0.5) {
+                        errors++;
+                        throw new Error("retryable-error");
+                    }
+                    return "yes";
+                },
+                {
+                    filterFn(shardId) {
+                        return shardId < 6;
+                    },
+                    shouldRetry(error, attempt, shard) {
+                        totalShouldRetry++;
+                        return shard % 2 === 0 ? attempt < 3 : attempt < 2;
+                    },
+                },
+            );
+
+            expect(responses.length).toEqual(6);
+            expect(totalShouldRetry).toEqual(errors);
+            expect(responses[2].ok).toBe(true);
+            assert(responses[2].ok === true);
+            expect(responses[2].result).toBe("yes");
+        });
     });
 
     describe("shards vs concurrency", { timeout: 20_000 }, async () => {
