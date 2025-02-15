@@ -41,11 +41,11 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
         expect(shards).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     });
 
-    it("allMaybe()", async () => {
+    it("tryAll()", async () => {
         const sdo = new FixedShardedDO(env.SQLDO, { numShards: 11 });
 
         const shards: number[] = [];
-        const {results: ids, errors} = await sdo.allMaybe(async (stub, shard) => {
+        const {results: ids, errors} = await sdo.tryAll(async (stub, shard) => {
             shards.push(shard);
             return await stub.actorId();
         });
@@ -54,11 +54,11 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
         expect(shards).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     });
 
-    it("allMaybe() - with errors", async () => {
+    it("tryAll() - with errors", async () => {
         const sdo = new FixedShardedDO(env.SQLDO, { numShards: 11 });
 
         const shards: number[] = [];
-        const {results: ids, errors} = await sdo.allMaybe(async (stub, shard) => {
+        const {results: ids, errors} = await sdo.tryAll(async (stub, shard) => {
             shards.push(shard);
             if (shard % 2 === 0) {
                 throw new Error("test-error");

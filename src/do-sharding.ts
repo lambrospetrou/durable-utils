@@ -1,4 +1,11 @@
-import { DurableObjectGetOptions, DurableObjectLocationHint, DurableObjectNamespace, DurableObjectNamespaceGetDurableObjectOptions, DurableObjectStub, Rpc } from "@cloudflare/workers-types";
+import {
+    DurableObjectGetOptions,
+    DurableObjectLocationHint,
+    DurableObjectNamespace,
+    DurableObjectNamespaceGetDurableObjectOptions,
+    DurableObjectStub,
+    Rpc,
+} from "@cloudflare/workers-types";
 import { xxHash32 } from "js-xxhash";
 
 // Golden Ratio constant used for better hash scattering
@@ -49,8 +56,8 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     }
 
     /**
-     * Execute a single request to a specific shard.
-     * @param shardKey The key to use to determine the shard to use. The key will be hashed to determine the shard.
+     * Execute a single request with the given shardKey.
+     * @param shardKey The key to hash to determine the shard to use. The key will be hashed to determine the shard.
      * @param doer The callback function to execute with the Durable Object stub for the chosen shard.
      * @returns The result of the given `doer` callback function.
      */
@@ -68,20 +75,26 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
      *          and an array of errors for each shard that failed.
      *          Items in the results array will be `undefined` if the shard failed, and similarly for the errors array.
      */
-    async allMaybe<R>(doer: (doStub: DurableObjectStub<T>, shard: number) => Promise<R>): Promise<{
+    async tryAll<R>(doer: (doStub: DurableObjectStub<T>, shard: number) => Promise<R>): Promise<{
         results: Array<R | undefined>;
         errors: Array<unknown>;
+        hasErrors: boolean;
     }> {
         if (this.#options.numShards > 1000) {
             throw new Error(
                 `Too many shards [${this.#options.numShards}], Cloudflare Workers only supports up to 1000 subrequests.`,
             );
         }
-        return await this.#pipelineRequests(this.#options.concurrency!, this.#options.numShards, false, async (shard) => {
-            const doId = this.#doNamespace.idFromName(`fixed-sharded-do-${shard}`);
-            const stub = this.#doNamespace.get(doId, this.#stubOptions(shard));
-            return await doer(stub, shard);
-        });
+        return await this.#pipelineRequests(
+            this.#options.concurrency!,
+            this.#options.numShards,
+            false,
+            async (shard) => {
+                const doId = this.#doNamespace.idFromName(`fixed-sharded-do-${shard}`);
+                const stub = this.#doNamespace.get(doId, this.#stubOptions(shard));
+                return await doer(stub, shard);
+            },
+        );
     }
 
     /**
@@ -130,6 +143,28 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
         }
     }
 
+    //////////////////////////////////////////////////////
+    // DEPRECATED
+
+    /**
+     * Execute a request to each of the shards, concurrently.
+     * @deprecated Use `tryAll` instead.
+     * @param doer The callback function to execute with the Durable Object stub for each shard.
+     * @returns An array of results from the given `doer` callback function for each shard,
+     *          and an array of errors for each shard that failed.
+     *          Items in the results array will be `undefined` if the shard failed, and similarly for the errors array.
+     */
+    async allMaybe<R>(doer: (doStub: DurableObjectStub<T>, shard: number) => Promise<R>): Promise<{
+        results: Array<R | undefined>;
+        errors: Array<unknown>;
+        hasErrors: boolean;
+    }> {
+        return await this.tryAll(doer);
+    }
+
+    //////////////////////////////////////////////////////
+    // INTERNAL IMPLEMENTATION
+
     async *#genPipelineRequests<R>(
         concurrency: number,
         n: number,
@@ -159,10 +194,12 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     ): Promise<{
         results: Array<R | undefined>;
         errors: Array<unknown>;
+        hasErrors: boolean;
     }> {
         const results: Array<R | undefined> = Array(n).fill(undefined);
         const errors: Array<unknown> = Array(n).fill(undefined);
         let i = 0;
+        let hasErrors = false;
         const next = async () => {
             if (i >= n) {
                 return;
@@ -174,6 +211,7 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
                 if (earlyReturn) {
                     throw e;
                 }
+                hasErrors = true;
                 errors[j] = e;
             }
             await next();
@@ -183,7 +221,7 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
                 .fill(0)
                 .map(() => next()),
         );
-        return { results, errors };
+        return { results, errors, hasErrors };
     }
 
     #stubOptions(shard: number): DurableObjectNamespaceGetDurableObjectOptions {

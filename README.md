@@ -123,7 +123,7 @@ const resultOfActionA = await sdo.all(async (stub, shard) => {
 const {
     results: resultOfActionA,
     errors
-} = await sdo.allMaybe(async (stub, shard) => {
+} = await sdo.tryAll(async (stub, shard) => {
     return await stub.actionA();
 });
 ```
