@@ -15,6 +15,32 @@ describe("StaticShardedDO", { timeout: 20_000 }, async () => {
             expect(sdo.N).toBe(n * 100);
         });
     });
+    
+    it("one() throws", async () => {
+        const sdo = new StaticShardedDO(env.SQLDO, { numShards: 7 });
+
+        await expect(sdo.one("test", async (stub) => {
+            throw new Error("test-error");
+        })).rejects.toEqual(new Error("test-error"));
+    });
+
+    it("all() throws", async () => {
+        const sdo = new StaticShardedDO(env.SQLDO, { numShards: 7 });
+
+        await expect(sdo.all(async (stub) => {
+            throw new Error("test-error");
+        })).rejects.toEqual(new Error("test-error"));
+    });
+
+    it("some() throws", async () => {
+        const sdo = new StaticShardedDO(env.SQLDO, { numShards: 7 });
+
+        await expect(sdo.some(async (stub) => {
+            throw new Error("test-error");
+        }, {
+            filterFn: (shard) => true,
+        })).rejects.toEqual(new Error("test-error"));
+    });
 
     it("one()", async () => {
         const sdo = new StaticShardedDO(env.SQLDO, { numShards: 7 });
@@ -64,6 +90,20 @@ describe("StaticShardedDO", { timeout: 20_000 }, async () => {
         });
         expect(new Set(ids).size).toEqual(11);
         expect(shards).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    });
+
+    it("some()", async () => {
+        const sdo = new StaticShardedDO(env.SQLDO, { numShards: 11, concurrency: 3 });
+
+        const shards: number[] = [];
+        const ids = await sdo.some(async (stub, shard) => {
+            shards.push(shard);
+            return await stub.actorId();
+        }, {
+            filterFn: (shard) => shard % 2 === 0,
+        });
+        expect(new Set(ids).size).toEqual(6);
+        expect(shards).toEqual([0, 2, 4, 6, 8, 10]);
     });
 
     it("tryAll()", async () => {
