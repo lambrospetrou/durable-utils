@@ -34,6 +34,7 @@ export interface StaticShardedDOOptions {
     /**
      * The prefix name to use for the Durable Objects created.
      * This allows you to use multiple groups of sharded DOs in the same namespace.
+     * Warning: The value will be trimmed on both ends before used.
      */
     prefixName?: string;
 
@@ -115,20 +116,26 @@ export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     #options: StaticShardedDOOptions & { concurrency: number, prefixName: string };
 
     constructor(doNamespace: DurableObjectNamespace<T>, options: StaticShardedDOOptions) {
+        if (options.numShards <= 0) {
+            throw new Error("Invalid number of shards, must be greater than 0");
+        }
+        if (options.concurrency !== undefined && options.concurrency <= 0) {
+            throw new Error("Invalid number of subrequests, must be greater than 0");
+        }
+        if (options.prefixName !== undefined) {
+            options.prefixName = (options.prefixName ?? "").trim();
+            if (!options.prefixName) {
+                throw new Error("Invalid prefix name, must not be empty or only whitespace");
+            }
+        }
+
         this.#doNamespace = doNamespace;
         this.#options = {
             ...options,
-            concurrency: options.concurrency || 10,
+            concurrency: options.concurrency ?? 10,
             // WARNING: Never change the default value of this otherwise there will be data loss!
-            prefixName: options.prefixName || "fixed-sharded-do",
+            prefixName: options.prefixName ?? "fixed-sharded-do",
         };
-
-        if (this.#options.numShards <= 0) {
-            throw new Error("Invalid number of shards, must be greater than 0");
-        }
-        if (this.#options.concurrency <= 0) {
-            throw new Error("Invalid number of subrequests, must be greater than 0");
-        }
     }
 
     /**

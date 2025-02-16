@@ -157,6 +157,41 @@ const resultsList = await sdo.trySome(async (stub, shard) => {
 });
 ```
 
+You can create multiple independent groups of shards within the same Durable Object Namespace.
+
+Provide a unique `prefixName` in the `StaticShardedDO` constructor options to use different Durable Objects.
+
+```javascript
+describe("prefix names", async () => {
+    it("default prefix should not conflict with prefixed names", async () => {
+        const sdo = new StaticShardedDO(env.SQLDO, { numShards: 3 });
+        const result = await sdo.one("test", async (stub) => {
+            return await stub.actorId();
+        });
+
+        const sdo2 = new StaticShardedDO(env.SQLDO, {
+            numShards: 3, prefixName: "groupOfShards2",
+        });
+        const result2 = await sdo2.one("test", async (stub) => {
+            return await stub.actorId();
+        });
+
+        const sdo3 = new StaticShardedDO(env.SQLDO, {
+            numShards: 3, prefixName: "groupOfShards3",
+        });
+        const result3 = await sdo3.one("test", async (stub) => {
+            return await stub.actorId();
+        });
+
+        // Even though we use the same partition key,
+        // the actual DOs handling the request are different.
+        expect(result).not.toEqual(result2);
+        expect(result).not.toEqual(result3);
+        expect(result2).not.toEqual(result3);
+    });
+});
+```
+
 ## Durable Objects Utilities
 
 Helper functions for working with Cloudflare Durable Objects.

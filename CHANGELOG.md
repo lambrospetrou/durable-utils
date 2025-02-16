@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 (2025-02-16)
+
+- Added `prefixName` to the `StaticShardedDO` constructor options. This allows multiple shard groups within the same Durable Object Namespace.
+
 ## 0.3.0 (2025-02-16)
 
 - Renamed `FixedShardedDO` to `StaticShardedDO` to better signal the static shard number used.
