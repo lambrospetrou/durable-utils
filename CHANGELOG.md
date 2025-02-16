@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0
+## 0.3.0 (2025-02-16)
 
 - Renamed `FixedShardedDO` to `StaticShardedDO` to better signal the static shard number used.
 - Extended `StaticShardedDO` with more methods `some()` to only query specific shards, `tryOne()/trySome()/tryAll()` for non-throwing variations of querying the shards.
@@ -11,6 +11,10 @@
 
 None.
 
-## 0.2.3
+## 0.2.3 (2025-01-30)
 
 - Added `FixedShardedDO` abstraction.
+
+## 0.1.4 (2024-10-25)
+
+- Added SQL Schema migrations helpers (`SQLSchemaMigrations`) for [SQLite Durable Objects](https://developers.cloudflare.com/durable-objects/api/sql-storage/).
