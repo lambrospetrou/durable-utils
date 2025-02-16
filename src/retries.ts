@@ -37,10 +37,13 @@ export async function tryN<T>(
         throw new Error("n must be greater than 0");
     }
     n = Math.floor(n);
-    const baseDelayMs = options?.baseDelayMs ?? 100;
-    const maxDelayMs = options?.maxDelayMs ?? 3000;
+    const baseDelayMs = Math.floor(options?.baseDelayMs ?? 100);
+    const maxDelayMs = Math.floor(options?.maxDelayMs ?? 3000);
     if (baseDelayMs <= 0 || maxDelayMs <= 0) {
         throw new Error("baseDelayMs and maxDelayMs must be greater than 0");
+    }
+    if (baseDelayMs >= maxDelayMs) {
+        throw new Error("baseDelayMs must be less than maxDelayMs");
     }
     let attempt = 1;
     while (true) {
