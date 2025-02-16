@@ -16,7 +16,10 @@ export function jitterBackoff(attempt: number, baseDelayMs: number, maxDelayMs: 
  * @param n Number of total attempts to make.
  * @param fn The function to call for each attempt. Receives the attempt number.
  * @param isRetryable The function to call to determine if the error is retryable. Receives the error and the next attempt number.
- * @param options 
+ * @param options The options for the retry strategy.
+ * @param options.baseDelayMs Number of milliseconds to use as multiplier for the exponential backoff.
+ * @param options.maxDelayMs Maximum number of milliseconds to wait.
+ * @param options.verbose If true, logs the error and attempt number to the console.
  * @returns The result of the `fn` function or propagates the last error thrown once `isRetryable` returns false or all retries failed.
  */
 export async function tryN<T>(
