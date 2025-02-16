@@ -308,4 +308,29 @@ describe("StaticShardedDO", { timeout: 20_000 }, async () => {
             expect(new Set(shards).size).toEqual(10);
         });
     });
+
+    describe("real-world scenarios", async () => {
+        it("sqlite do - 01", async () => {
+            const sdo = new StaticShardedDO(env.SQLDO, { numShards: 20 });
+
+            // 5x the keys to have a higher chance of hitting all shards/DOs.
+            const totalKeys = 100;
+            const sql = (key: number) => `SELECT '${key}' as keystr;`;
+
+            const results = [];
+            for (let i = 0; i < totalKeys; i++) {
+                const result = await sdo.one(`key-${i}`, async (stub) => {
+                    const rows = await stub.sql(sql(i));
+                    const actorId = await stub.actorId();
+                    return {rows, actorId};
+                });
+                expect(result).toEqual({ rows: [{keystr: String(i)}], actorId: expect.any(String) });
+                results.push(result);
+            }
+
+            const actorIds = results.map((r) => r.actorId);
+            // Make sure we spread out across all shards/DOs.
+            expect(new Set(actorIds).size).toEqual(sdo.N);
+        });
+    });
 });

@@ -32,6 +32,10 @@ export class SQLiteDO extends DurableObject<Env> {
     async echo(s: string) {
         return s;
     }
+
+    async sql(query: string) {
+        return this.ctx.storage.sql.exec(query).toArray();
+    }
 }
 
 export default {
