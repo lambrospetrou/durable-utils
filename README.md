@@ -2,6 +2,8 @@
 
 Utilities and abstractions for Cloudflare [Durable Objects](https://developers.cloudflare.com/durable-objects/) and Cloudflare [Workers](https://developers.cloudflare.com/workers/).
 
+For changes between versions checkout the [CHANGELOG](./CHANGELOG.md).
+
 **Table of contents**
 
 - [Install](#install)
@@ -101,8 +103,9 @@ export class TenantDO extends DurableObject {
 
 `StaticShardedDO` is a helper making it easier to query `N` Durable Objects with the simplicity of single DO.
 
-**Warning:** Once you start using `StaticShardedDO` with a specific shard size, you should NEVER change its number of shards.
-At the moment, there is no re-sharding of the data stored by the Durable Objects, thus it's not safe to change the number of shards.
+> [!IMPORTANT]
+> Once you start using `StaticShardedDO` with a specific shard size, you should NEVER change its number of shards.
+> At the moment, there is no re-sharding of the data stored by the Durable Objects, thus it's not safe to change the number of shards.
 
 The TypeScript types have extensive documentation on the specifics, so do read them either through your IDE, or directly the `do-sharding.d.ts` types.
 
@@ -150,7 +153,7 @@ const resultsList = await sdo.trySome(async (stub, shard) => {
     return await stub.actionA();
 }, {
     filterFn: (_shard) => true,
-    shouldRetry: (error: unknown, attempt: number, shard: ShardId) => attempt < 4;
+    shouldRetry: (_error, attempt, _shard) => attempt < 4;
 });
 ```
 
@@ -212,11 +215,11 @@ await tryN(
 - `n`: Maximum number of attempts.
 - `fn`: Async function to execute, receives current attempt number and returns a value `T`.
 - `isRetryable`: Function that determines if an error should trigger a retry.
-- `options`: Configuration object
+- `options`: Optional configuration object
     - `baseDelayMs`: Base delay for exponential backoff (default: 100ms).
     - `maxDelayMs`: Maximum delay between retries (default: 3000ms).
     - `verbose`: Enable logging of retry attempts.
 
-The retry delay is calculated using the "Full Jitter" approach, which helps prevent thundering herd problems, as described in Marc Brooker's post [Exponential Backoff And Jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/).
+The retry delay is calculated using the "Full Jitter" approach, which helps prevent thundering herd problems, as described in Marc Brooker's AWS post [Exponential Backoff And Jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/).
 
 Each retry attempt uses a random delay equal to `random_between(0, min(2^attempt * baseDelayMs, maxDelayMs))`.
