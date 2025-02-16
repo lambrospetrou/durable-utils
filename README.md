@@ -92,6 +92,13 @@ export class TenantDO extends DurableObject {
 
 ## StaticShardedDO
 
+> [!WARNING]
+> Even though I will try not to do breaking changes to the `StaticShardedDO` API, this is still into design phase.
+> Depending on feedback and using it over time, I might change its API.
+> Please use it, and give me feedback on what you find hard to use.
+>
+> The underlying guarantee about the static number of shards **will not change to avoid data loss.**
+
 `StaticShardedDO` is a helper making it easier to query `N` Durable Objects with the simplicity of single DO.
 
 **Warning:** Once you start using `StaticShardedDO` with a specific shard size, you should NEVER change its number of shards.
