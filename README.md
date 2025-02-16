@@ -1,12 +1,14 @@
 # durable-utils
 
-Utilities for Cloudflare [Durable Objects](https://developers.cloudflare.com/durable-objects/) and Cloudflare [Workers](https://developers.cloudflare.com/workers/).
+Utilities and abstractions for Cloudflare [Durable Objects](https://developers.cloudflare.com/durable-objects/) and Cloudflare [Workers](https://developers.cloudflare.com/workers/).
 
 **Table of contents**
 
 - [Install](#install)
 - [SQLite Schema migrations](#sqlite-schema-migrations)
 - [StaticShardedDO](#staticshardeddo)
+- [Durable Objects Utilities](#durable-objects-utilities)
+- [Retry Utilities](#retry-utilities)
 
 ## Install
 
@@ -114,19 +116,22 @@ const resultOfActionA = await sdo.one(partitionKey, async (stub, _shard) => {
     return await stub.actionA();
 });
 
-// Query all 11 shards and get their results in an array, or fail with the first error thrown.
+// Query all 11 shards.
+// Get their results in an array, or fail with the first error thrown.
 const resultOfActionA = await sdo.all(async (stub, _shard) => {
     return await stub.actionA();
 });
 
-// Query all 11 shards and get their results or their errors without throwing.
+// Query all 11 shards.
+// Get their results or their errors without throwing.
 const resultsList = await sdo.tryAll(async (stub, shard) => {
     return await stub.actionA();
 });
 const failed = resultsList.filter(r => !r.ok);
 const worked = resultsList.filter(r => r.ok);
 
-// Query only the even shards out of the 11 and get their results or their errors.
+// Query only the even shards out of the 11.
+// Get their results or their errors without throwing.
 const resultsList = await sdo.trySome(async (stub, shard) => {
     return await stub.actionA();
 }, {
@@ -141,3 +146,70 @@ const resultsList = await sdo.trySome(async (stub, shard) => {
     shouldRetry: (error: unknown, attempt: number, shard: ShardId) => attempt < 4;
 });
 ```
+
+## Durable Objects Utilities
+
+Helper functions for working with Cloudflare Durable Objects.
+
+### `stubByName<T>(doNamespace, name, options)`
+
+Creates a [Durable Object stub](https://developers.cloudflare.com/durable-objects/api/stub/) from a string name in a single function call, combining the `DurableObjectNamespace` operations `idFromName` and `get`.
+
+```javascript
+import { stubByName } from "durable-utils/do-utils";
+
+const stub = stubByName(env.MY_DURABLE_OBJECT, "instance-1");
+```
+
+**Parameters**
+
+- `doNamespace`: The [Durable Object namespace binding](https://developers.cloudflare.com/durable-objects/api/namespace/).
+- `name`: String identifier for the Durable Object instance to access.
+- `options`: Optional Durable Object configuration options, see <https://developers.cloudflare.com/durable-objects/api/namespace/#get>.
+
+### `isErrorRetryable(err)`
+
+Determines if a Durable Object error should be retried based on Cloudflare's error handling guidelines.
+
+```javascript
+import { isErrorRetryable } from "durable-utils/do-utils";
+
+if (isErrorRetryable(error)) {
+    // Safe to retry the operation
+}
+```
+
+Returns `true` for retryable errors, excluding overloaded errors. This follows Cloudflare's official [error handling best practices](https://developers.cloudflare.com/durable-objects/best-practices/error-handling/).
+
+## Retry Utilities
+
+This package provides utilities for handling retries with exponential backoff and jitter.
+
+### `tryN<T>(n, fn, isRetryable, options)`
+
+Executes a function with retry logic, implementing exponential backoff with full jitter.
+
+```javascript
+import { tryN } from  "durable-utils/retries";
+import { isErrorRetryable } from "durable-utils/do-utils";
+
+await tryN(
+    3,
+    async (_attempt) => fetch(url),
+    (err, _nextAttempt) => isErrorRetryable(err),
+);
+```
+
+**Parameters**
+
+- `n`: Maximum number of attempts.
+- `fn`: Async function to execute, receives current attempt number and returns a value `T`.
+- `isRetryable`: Function that determines if an error should trigger a retry.
+- `options`: Configuration object
+    - `baseDelayMs`: Base delay for exponential backoff (default: 100ms).
+    - `maxDelayMs`: Maximum delay between retries (default: 3000ms).
+    - `verbose`: Enable logging of retry attempts.
+
+The retry delay is calculated using the "Full Jitter" approach, which helps prevent thundering herd problems, as described in Marc Brooker's post [Exponential Backoff And Jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/).
+
+Each retry attempt uses a random delay equal to `random_between(0, min(2^attempt * baseDelayMs, maxDelayMs))`.
