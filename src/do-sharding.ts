@@ -60,24 +60,36 @@ export type TryResult<R> =
       };
 
 /**
- * The options to control the behavior of the `trySome` and `tryAll` methods.
+ * The options to control the behavior of the `trySome` method.
  */
 export type TryOptions = {
     /**
      * A function to select which shards to use for the requests.
-     * The function should return `true` for shards that should be used, and `false` for shards that should be skipped.
+     * @param shardId The shard ID to decide if it should be queried.
+     * @returns `true` for shards that should be used, and `false` for shards that should be skipped.
      */
     filterFn: (shardId: ShardId) => boolean;
 
     /**
      * A function to determine if a failed request should be retried.
      * The arguments of the function are:
-     * - the error thrown
-     * - the attempt number (value 2 means it's the first retry after the failed first request)
-     * - the shard ID the request was made to
+     * @param error the error thrown by the request
+     * @param attempt the attempt number (value 2 means it's the first retry after the failed first request)
+     * @param shard the shard ID the request was made to
+     * @returns `true` if the request should be retried, `false` otherwise.
      */
     shouldRetry?: (error: unknown, attempt: number, shard: ShardId) => boolean;
 };
+
+/**
+ * The options to control the behavior of the `tryOne` method.
+ */
+export type TryOneOptions = Omit<TryOptions, "filterFn">;
+
+/**
+ * The options to control the behavior of the `tryAll` method.
+ */
+export type TryAllOptions = Omit<TryOptions, "filterFn">;
 
 /**
  * @deprecated Use `tryAll` instead.
@@ -129,7 +141,7 @@ export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     async tryOne<R>(
         partitionKey: string,
         doer: (doStub: DurableObjectStub<T>, shard: ShardId) => Promise<R>,
-        options?: Omit<TryOptions, "filterFn">,
+        options?: TryOneOptions,
     ): Promise<TryResult<R>> {
         const shard = this.#shardForPartitionKey(partitionKey);
         const result = await this.#makeTryShard(doer, options)(shard);
@@ -146,7 +158,7 @@ export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     async one<R>(
         partitionKey: string,
         doer: (doStub: DurableObjectStub<T>) => Promise<R>,
-        options?: Omit<TryOptions, "filterFn">,
+        options?: TryOneOptions,
     ): Promise<R> {
         const response = await this.tryOne(partitionKey, doer, options);
         if (!response.ok) {
@@ -158,7 +170,7 @@ export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     /**
      * Execute a request to the shards selected by the `options.filterFn` callback, concurrently.
      * @param doer The callback function to execute with the Durable Object stub for each shard.
-     * @param options The options to control the behavior of the `trySome` function.
+     * @param options The options to control the execution like retries and filtering of shards.
      * @returns An array of the results from the given `doer` callback function for each shard,
      *          Each item in the array will be a `TryResult` object with the `ok` property indicating success or failure.
      *          Only shards that pass the `options.filterFn` will be returned.
@@ -179,7 +191,7 @@ export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     /**
      * Execute a request to the shards selected by the `options.filterFn` callback, concurrently.
      * @param doer The callback function to execute with the Durable Object stub for each shard.
-     * @param options The options to control the behavior of the `trySome` function.
+     * @param options The options to control the execution like retries and filtering of shards.
      * @returns An array of results from the given `doer` callback function for each filtered shard.
      *          Only shards that pass the `options.filterFn` will be returned.
      *          In case of an error, the function will throw the error immediately.
@@ -207,31 +219,39 @@ export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     /**
      * Execute a request to each of the shards, concurrently.
      * @param doer The callback function to execute with the Durable Object stub for each shard.
+     * @param options The options to control the execution like retries.
      * @returns An array of the results from the given `doer` callback function for each shard,
      *          Each item in the array will be a `TryResult` object with the `ok` property indicating success or failure.
      */
-    async tryAll<R>(doer: (doStub: DurableObjectStub<T>, shard: ShardId) => Promise<R>): Promise<Array<TryResult<R>>> {
+    async tryAll<R>(
+        doer: (doStub: DurableObjectStub<T>, shard: ShardId) => Promise<R>,
+        options?: TryAllOptions,
+    ): Promise<Array<TryResult<R>>> {
         if (this.#options.numShards > 1000) {
             throw new Error(
                 `Too many shards [${this.#options.numShards}], Cloudflare Workers only supports up to 1000 subrequests.`,
             );
         }
-        return await this.trySome(doer, { filterFn: (_shard) => true });
+        return await this.trySome(doer, { ...options, filterFn: (_shard) => true });
     }
 
     /**
      * Execute a request to each of the shards, concurrently.
      * @param doer The callback function to execute with the Durable Object stub for each shard.
+     * @param options The options to control the execution like retries.
      * @returns An array of results from the given `doer` callback function for each shard.
      *          In case of an error, the function will throw the error immediately.
      */
-    async all<R>(doer: (doStub: DurableObjectStub<T>, shard: ShardId) => Promise<R>): Promise<Array<R>> {
+    async all<R>(
+        doer: (doStub: DurableObjectStub<T>, shard: ShardId) => Promise<R>,
+        options?: TryAllOptions,
+    ): Promise<Array<R>> {
         if (this.#options.numShards > 1000) {
             throw new Error(
                 `Too many shards [${this.#options.numShards}], Cloudflare Workers only supports up to 1000 subrequests.`,
             );
         }
-        return await this.some(doer, { filterFn: (_shard) => true });
+        return await this.some(doer, { ...options, filterFn: (_shard) => true });
     }
 
     //////////////////////////////////////////////////////

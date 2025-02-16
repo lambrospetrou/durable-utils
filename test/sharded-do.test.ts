@@ -37,26 +37,6 @@ describe("StaticShardedDO", { timeout: 20_000 }, async () => {
         expect(id1).not.to.equal(id2);
     });
 
-    it("one() with retries", async () => {
-        const sdo = new StaticShardedDO(env.SQLDO, { numShards: 3 });
-        let attempt = 0;
-        const result = await sdo.one(
-            "test",
-            async (stub) => {
-                attempt++;
-                if (attempt === 3) return await stub.echo("test-01");
-                else throw new Error("test-error");
-            },
-            {
-                shouldRetry(error, attempt, shard) {
-                    return attempt < 4;
-                },
-            },
-        );
-        expect(result).toBe("test-01");
-        expect(attempt).toBe(3);
-    });
-
     it("tryOne() with errors", async () => {
         const sdo = new StaticShardedDO(env.SQLDO, { numShards: 7 });
         const response1 = await sdo.tryOne("test", async (stub) => {
@@ -205,57 +185,84 @@ describe("StaticShardedDO", { timeout: 20_000 }, async () => {
     });
 
     describe("retries", async () => {
-        it("trySome() with different retries among shards", async () => {
-            // Make sure concurrency is less than the shards to test the iteration properly.
-            const sdo = new StaticShardedDO(env.SQLDO, { numShards: 11, concurrency: 3 });
-
-            const attemptsByShard = new Map<number, number>();
-
-            let totalShouldRetry = 0;
-            let errors = 0;
-            const responses = await sdo.trySome(
-                async (stub, shard) => {
-                    attemptsByShard.set(shard, (attemptsByShard.get(shard) || 0) + 1);
-
-                    // Shard 2 never throws.
-                    if (shard != 2) {
-                        errors++;
-                        throw new Error("retryable-error");
-                    }
-                    return "yes";
+        it("one() with retries", async () => {
+            const sdo = new StaticShardedDO(env.SQLDO, { numShards: 3 });
+            let attempt = 0;
+            const result = await sdo.one(
+                "test",
+                async (stub) => {
+                    attempt++;
+                    if (attempt === 3) return await stub.echo("test-01");
+                    else throw new Error("test-error");
                 },
                 {
-                    filterFn(shardId) {
-                        return true;
-                    },
                     shouldRetry(error, attempt, shard) {
-                        totalShouldRetry++;
-                        // Test different retries for different shards.
-                        return shard % 2 === 0 ? attempt < 4 : attempt < 3;
+                        return attempt < 4;
                     },
                 },
             );
+            expect(result).toBe("test-01");
+            expect(attempt).toBe(3);
+        });
 
-            expect(responses.length).toEqual(11);
-            expect(totalShouldRetry).toEqual(errors);
-            expect(responses[2]).toEqual({ ok: true, result: "yes", shard: 2 });
+        (
+            [
+                { method: "trySome" },
+                { method: "tryAll" },
+            ] as { name: string; method: "trySome" | "tryAll" }[]
+        ).forEach(({ method }) => {
+            it(`${method}() with different retries among shards`, async () => {
+                // Make sure concurrency is less than the shards to test the iteration properly.
+                const sdo = new StaticShardedDO(env.SQLDO, { numShards: 11, concurrency: 3 });
 
-            // Check that the retries were done correctly.
-            for (let i = 0; i < 6; i++) {
-                if (i === 2) {
-                    expect(attemptsByShard.get(i)).toBe(1);
-                } else {
-                    // Make sure other shards have the right response.
-                    if (
-                        (i % 2 === 0 && attemptsByShard.get(i) === 3) ||
-                        (i % 2 === 1 && attemptsByShard.get(i) === 2)
-                    ) {
-                        expect(responses[i]).toEqual({ ok: false, error: new Error("retryable-error"), shard: i });
+                const attemptsByShard = new Map<number, number>();
+
+                let totalShouldRetry = 0;
+                let errors = 0;
+                const responses = await sdo[method](
+                    async (stub, shard) => {
+                        attemptsByShard.set(shard, (attemptsByShard.get(shard) || 0) + 1);
+
+                        // Shard 2 never throws.
+                        if (shard != 2) {
+                            errors++;
+                            throw new Error("retryable-error");
+                        }
+                        return "yes";
+                    },
+                    {
+                        filterFn(shardId) {
+                            return true;
+                        },
+                        shouldRetry(error, attempt, shard) {
+                            totalShouldRetry++;
+                            // Test different retries for different shards.
+                            return shard % 2 === 0 ? attempt < 4 : attempt < 3;
+                        },
+                    },
+                );
+
+                expect(responses.length).toEqual(11);
+                expect(totalShouldRetry).toEqual(errors);
+                expect(responses[2]).toEqual({ ok: true, result: "yes", shard: 2 });
+
+                // Check that the retries were done correctly.
+                for (let i = 0; i < 6; i++) {
+                    if (i === 2) {
+                        expect(attemptsByShard.get(i)).toBe(1);
                     } else {
-                        expect(responses[i]).toEqual({ ok: true, result: "yes", shard: i });
+                        // Make sure other shards have the right response.
+                        if (
+                            (i % 2 === 0 && attemptsByShard.get(i) === 3) ||
+                            (i % 2 === 1 && attemptsByShard.get(i) === 2)
+                        ) {
+                            expect(responses[i]).toEqual({ ok: false, error: new Error("retryable-error"), shard: i });
+                        } else {
+                            expect(responses[i]).toEqual({ ok: true, result: "yes", shard: i });
+                        }
                     }
                 }
-            }
+            });
         });
     });
 
@@ -322,9 +329,9 @@ describe("StaticShardedDO", { timeout: 20_000 }, async () => {
                 const result = await sdo.one(`key-${i}`, async (stub) => {
                     const rows = await stub.sql(sql(i));
                     const actorId = await stub.actorId();
-                    return {rows, actorId};
+                    return { rows, actorId };
                 });
-                expect(result).toEqual({ rows: [{keystr: String(i)}], actorId: expect.any(String) });
+                expect(result).toEqual({ rows: [{ keystr: String(i) }], actorId: expect.any(String) });
                 results.push(result);
             }
 
