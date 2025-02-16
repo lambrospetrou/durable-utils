@@ -11,6 +11,14 @@ export function jitterBackoff(attempt: number, baseDelayMs: number, maxDelayMs: 
     return Math.floor(Math.random() * attemptUpperBoundMs);
 }
 
+/**
+ * 
+ * @param n Number of total attempts to make.
+ * @param fn The function to call for each attempt. Receives the attempt number.
+ * @param isRetryable The function to call to determine if the error is retryable. Receives the error and the next attempt number.
+ * @param options 
+ * @returns The result of the `fn` function or propagates the last error thrown once `isRetryable` returns false or all retries failed.
+ */
 export async function tryN<T>(
     n: number,
     fn: (attempt: number) => Promise<T>,
@@ -31,9 +39,8 @@ export async function tryN<T>(
     if (baseDelayMs <= 0 || maxDelayMs <= 0) {
         throw new Error("baseDelayMs and maxDelayMs must be greater than 0");
     }
-    let attempt = 0;
+    let attempt = 1;
     while (true) {
-        attempt += 1;
         try {
             return await fn(attempt);
         } catch (err) {
@@ -45,7 +52,8 @@ export async function tryN<T>(
                     errorProps: err,
                 });
             }
-            if (!isRetryable(err, attempt) || attempt >= n) {
+            attempt += 1;
+            if (!isRetryable(err, attempt) || attempt > n) {
                 throw err;
             }
             const delay = jitterBackoff(attempt, baseDelayMs, maxDelayMs);

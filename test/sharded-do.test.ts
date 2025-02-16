@@ -2,6 +2,7 @@ import { env } from "cloudflare:test";
 import { assert, describe, expect, it } from "vitest";
 import { Env } from "./workers-test";
 import { FixedShardedDO } from "../src/do-sharding";
+import { a } from "vitest/dist/chunks/suite.B2jumIFP.js";
 
 declare module "cloudflare:test" {
     interface ProvidedEnv extends Env {}
@@ -152,14 +153,20 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
     });
 
     describe("retries", async () => {
-        it("trySome() with retries", async () => {
+        it("trySome() with different retries among shards", async () => {
+            // Make sure concurrency is less than the shards to test the iteration properly.
             const sdo = new FixedShardedDO(env.SQLDO, { numShards: 11, concurrency: 3 });
+
+            const attemptsByShard = new Map<number, number>();
 
             let totalShouldRetry = 0;
             let errors = 0;
             const responses = await sdo.trySome(
                 async (stub, shard) => {
-                    if (shard != 2 && Math.random() < 0.5) {
+                    attemptsByShard.set(shard, (attemptsByShard.get(shard) || 0) + 1);
+
+                    // Shard 2 never throws.
+                    if (shard != 2) {
                         errors++;
                         throw new Error("retryable-error");
                     }
@@ -167,20 +174,36 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
                 },
                 {
                     filterFn(shardId) {
-                        return shardId < 6;
+                        return true;
                     },
                     shouldRetry(error, attempt, shard) {
                         totalShouldRetry++;
-                        return shard % 2 === 0 ? attempt < 3 : attempt < 2;
+                        // Test different retries for different shards.
+                        return shard % 2 === 0 ? attempt < 4 : attempt < 3;
                     },
                 },
             );
 
-            expect(responses.length).toEqual(6);
+            expect(responses.length).toEqual(11);
             expect(totalShouldRetry).toEqual(errors);
-            expect(responses[2].ok).toBe(true);
-            assert(responses[2].ok === true);
-            expect(responses[2].result).toBe("yes");
+            expect(responses[2]).toEqual({ ok: true, result: "yes", shard: 2 });
+
+            // Check that the retries were done correctly.
+            for (let i = 0; i < 6; i++) {
+                if (i === 2) {
+                    expect(attemptsByShard.get(i)).toBe(1);
+                } else {
+                    // Make sure other shards have the right response.
+                    if (
+                        (i % 2 === 0 && attemptsByShard.get(i) === 3) ||
+                        (i % 2 === 1 && attemptsByShard.get(i) === 2)
+                    ) {
+                        expect(responses[i]).toEqual({ ok: false, error: new Error("retryable-error"), shard: i });
+                    } else {
+                        expect(responses[i]).toEqual({ ok: true, result: "yes", shard: i });
+                    }
+                }
+            }
         });
     });
 
