@@ -6,14 +6,14 @@ import {
     Rpc,
 } from "@cloudflare/workers-types";
 import { xxHash32 } from "js-xxhash";
-import { isErrorRetryable, stubByName } from "./do-utils";
+import { stubByName } from "./do-utils";
 import { tryN } from "./retries";
 
 // Golden Ratio constant used for better hash scattering
 // See https://softwareengineering.stackexchange.com/a/402543
 const GOLDEN_RATIO = 0x9e3779b1;
 
-export interface FixedShardedDOOptions {
+export interface StaticShardedDOOptions {
     /**
      * The number of shards to use for spreading out the load among all requests.
      * The number of shards will decide how many DOs will be used internally.
@@ -92,11 +92,11 @@ export type AllMaybeResult<R> = {
  * A utility class to interact with a fixed number of sharded Durable Objects.
  * This class will automatically hash the given key to determine the shard to use.
  */
-export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
+export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     #doNamespace: DurableObjectNamespace<T>;
-    #options: FixedShardedDOOptions & { concurrency: number };
+    #options: StaticShardedDOOptions & { concurrency: number };
 
-    constructor(doNamespace: DurableObjectNamespace<T>, options: FixedShardedDOOptions) {
+    constructor(doNamespace: DurableObjectNamespace<T>, options: StaticShardedDOOptions) {
         this.#doNamespace = doNamespace;
         this.#options = {
             ...options,
@@ -119,18 +119,18 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     }
 
     /**
-     * Execute a single request against the Durable Object responsible for the given shardKey.
+     * Execute a single request against the Durable Object responsible for the given partitionKey.
      * @param doer The callback function to execute with the Durable Object stub for each shard.
      * @param options The options to control the behavior of the `tryOne` function.
      * @returns An array of the results from the given `doer` callback function for each shard,
      *          Each item in the array will be a `TryResult` object with the `ok` property indicating success or failure.
      */
     async tryOne<R>(
-        shardKey: string,
+        partitionKey: string,
         doer: (doStub: DurableObjectStub<T>, shard: ShardId) => Promise<R>,
         options?: Omit<TryOptions, "filterFn">,
     ): Promise<TryResult<R>> {
-        const shard = this.#shardShardKey(shardKey);
+        const shard = this.#shardForPartitionKey(partitionKey);
         const stub = this.#stub(shard);
         try {
             return { ok: true, shard, result: await doer(stub, shard) };
@@ -140,13 +140,13 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     }
 
     /**
-     * Execute a single request against the Durable Object responsible for the given shardKey.
-     * @param shardKey The key to hash to determine the shard to use. The key will be hashed to determine the shard.
+     * Execute a single request against the Durable Object responsible for the given partitionKey.
+     * @param partitionKey The key to hash to determine the shard to use. The key will be hashed to determine the shard.
      * @param doer The callback function to execute with the Durable Object stub for the chosen shard.
      * @returns The result of the given `doer` callback function. If `doer()` throws the error is propagated.
      */
-    async one<R>(shardKey: string, doer: (doStub: DurableObjectStub<T>) => Promise<R>): Promise<R> {
-        const response = await this.tryOne(shardKey, doer, {});
+    async one<R>(partitionKey: string, doer: (doStub: DurableObjectStub<T>) => Promise<R>): Promise<R> {
+        const response = await this.tryOne(partitionKey, doer, {});
         if (!response.ok) {
             throw response.error;
         }
@@ -382,8 +382,8 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
         }
     }
 
-    #shardShardKey(shardKey: string): ShardId {
-        const shard = xxHash32(shardKey, GOLDEN_RATIO) % this.#options.numShards;
+    #shardForPartitionKey(partitionKey: string): ShardId {
+        const shard = xxHash32(partitionKey, GOLDEN_RATIO) % this.#options.numShards;
         return shard;
     }
 
@@ -399,3 +399,8 @@ export class FixedShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
         return options;
     }
 }
+
+/**
+ * @deprecated Use `StaticShardedDO` instead.
+ */
+export const FixedShardedDO = StaticShardedDO;

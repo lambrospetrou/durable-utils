@@ -6,7 +6,7 @@ Utilities for Cloudflare [Durable Objects](https://developers.cloudflare.com/dur
 
 - [Install](#install)
 - [SQLite Schema migrations](#sqlite-schema-migrations)
-- [FixedShardedDO](#fixedshardeddo)
+- [StaticShardedDO](#staticshardeddo)
 
 ## Install
 
@@ -88,50 +88,56 @@ export class TenantDO extends DurableObject {
 }
 ```
 
-## FixedShardedDO
+## StaticShardedDO
 
-`FixedShardedDO` is a helper making it easier to query `N` Durable Objects with the simplicity of single DO.
+`StaticShardedDO` is a helper making it easier to query `N` Durable Objects with the simplicity of single DO.
 
-**Warning:** Once you start using `FixedShardedDO` with a specific shard size, you should NEVER change its number of shards.
+**Warning:** Once you start using `StaticShardedDO` with a specific shard size, you should NEVER change its number of shards.
 At the moment, there is no re-sharding of the data stored by the Durable Objects, thus it's not safe to change the number of shards.
 
 The TypeScript types have extensive documentation on the specifics, so do read them either through your IDE, or directly the `do-sharding.d.ts` types.
+
+The methods `one(), some(), all()` return results as returned by the underlying DO call or throw the first error received, whereas their variations `tryOne(), trySome(), tryAll()` catch the errors within and return an object containing either the result or the error thrown.
 
 ### Example
 
 In your Worker code (or elsewhere) when you want to call a method `actionA()` on a Durable Object of namespace `DO_ABC` you would have the following:
 
 ```javascript
-import { FixedShardedDO } from "durable-utils/do-sharding";
+import { StaticShardedDO } from "durable-utils/do-sharding";
 
-const sdo = new FixedShardedDO(env.DO_ABC, { numShards: 11 });
+const sdo = new StaticShardedDO(env.DO_ABC, { numShards: 11, concurrency: 6 });
 
-// Query only the shard that maps to the shard key.
-const shardKey = "some-key-here"
-const resultOfActionA = await sdo.one(shardKey, async (stub, shard) => {
+// Query only the shard that handles the given partition key.
+const partitionKey = "some-resource-ID-here"
+const resultOfActionA = await sdo.one(partitionKey, async (stub, _shard) => {
     return await stub.actionA();
 });
 
-// Query all 11 shards and get their results in an array, or will fail with the first error thrown.
-const resultOfActionA = await sdo.all(async (stub, shard) => {
+// Query all 11 shards and get their results in an array, or fail with the first error thrown.
+const resultOfActionA = await sdo.all(async (stub, _shard) => {
     return await stub.actionA();
 });
 
-// Query all 11 shards and get their results or their errors.
-const {
-    results: resultOfActionA,
-    errors
-} = await sdo.tryAll(async (stub, shard) => {
+// Query all 11 shards and get their results or their errors without throwing.
+const resultsList = await sdo.tryAll(async (stub, shard) => {
     return await stub.actionA();
 });
+const failed = resultsList.filter(r => !r.ok);
+const worked = resultsList.filter(r => r.ok);
 
 // Query only the even shards out of the 11 and get their results or their errors.
-const {
-    results: resultOfActionA,
-    errors
-} = await sdo.trySome(async (stub, shard) => {
+const resultsList = await sdo.trySome(async (stub, shard) => {
     return await stub.actionA();
 }, {
     filterFn: (shard) => shard % 2 === 0,
+});
+
+// Automatically retry failed shards up to a total of 3 attempts.
+const resultsList = await sdo.trySome(async (stub, shard) => {
+    return await stub.actionA();
+}, {
+    filterFn: (_shard) => true,
+    shouldRetry: (error: unknown, attempt: number, shard: ShardId) => attempt < 4;
 });
 ```
