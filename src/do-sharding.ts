@@ -32,6 +32,12 @@ export interface StaticShardedDOOptions {
     concurrency?: number;
 
     /**
+     * The prefix name to use for the Durable Objects created.
+     * This allows you to use multiple groups of sharded DOs in the same namespace.
+     */
+    prefixName?: string;
+
+    /**
      * A function that returns a location hint for a specific shard.
      * The location hint is used to specify the region where the Durable Object should be placed.
      * If the function returns `undefined`, the Durable Object will be placed in the closest region.
@@ -106,13 +112,15 @@ export type AllMaybeResult<R> = {
  */
 export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     #doNamespace: DurableObjectNamespace<T>;
-    #options: StaticShardedDOOptions & { concurrency: number };
+    #options: StaticShardedDOOptions & { concurrency: number, prefixName: string };
 
     constructor(doNamespace: DurableObjectNamespace<T>, options: StaticShardedDOOptions) {
         this.#doNamespace = doNamespace;
         this.#options = {
             ...options,
             concurrency: options.concurrency || 10,
+            // WARNING: Never change the default value of this otherwise there will be data loss!
+            prefixName: options.prefixName || "fixed-sharded-do",
         };
 
         if (this.#options.numShards <= 0) {
@@ -408,7 +416,7 @@ export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     }
 
     #stub(shard: ShardId): DurableObjectStub<T> {
-        return stubByName(this.#doNamespace, `fixed-sharded-do-${shard}`, this.#stubOptions(shard));
+        return stubByName(this.#doNamespace, `${this.#options.prefixName}-${shard}`, this.#stubOptions(shard));
     }
 
     #stubOptions(shard: ShardId): DurableObjectNamespaceGetDurableObjectOptions {

@@ -224,6 +224,30 @@ describe("StaticShardedDO", { timeout: 20_000 }, async () => {
         expect(shards).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     });
 
+    describe("prefix names", async () => {
+        it("default prefix should not conflict with prefixed names", async () => {
+            const sdo = new StaticShardedDO(env.SQLDO, { numShards: 3 });
+            const result = await sdo.one("test", async (stub) => {
+                return await stub.actorId();
+            });
+
+            const sdo2 = new StaticShardedDO(env.SQLDO, { numShards: 3, prefixName: "groupOfShards2" });
+            const result2 = await sdo2.one("test", async (stub) => {
+                return await stub.actorId();
+            });
+
+            const sdo3 = new StaticShardedDO(env.SQLDO, { numShards: 3, prefixName: "groupOfShards3" });
+            const result3 = await sdo3.one("test", async (stub) => {
+                return await stub.actorId();
+            });
+            
+            // Even though we use the same partition key, the actual DOs handling the request are different.
+            expect(result).not.toEqual(result2);
+            expect(result).not.toEqual(result3);
+            expect(result2).not.toEqual(result3);
+        });
+    });
+
     describe("retries", async () => {
         it("one() with retries", async () => {
             const sdo = new StaticShardedDO(env.SQLDO, { numShards: 3 });
