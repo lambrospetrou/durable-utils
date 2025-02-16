@@ -120,8 +120,9 @@ export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
 
     /**
      * Execute a single request against the Durable Object responsible for the given partitionKey.
+     * @param partitionKey The partition key is used to determine the shard.
      * @param doer The callback function to execute with the Durable Object stub for each shard.
-     * @param options The options to control the behavior of the `tryOne` function.
+     * @param options The options to control the execution like retries.
      * @returns An array of the results from the given `doer` callback function for each shard,
      *          Each item in the array will be a `TryResult` object with the `ok` property indicating success or failure.
      */
@@ -131,22 +132,23 @@ export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
         options?: Omit<TryOptions, "filterFn">,
     ): Promise<TryResult<R>> {
         const shard = this.#shardForPartitionKey(partitionKey);
-        const stub = this.#stub(shard);
-        try {
-            return { ok: true, shard, result: await doer(stub, shard) };
-        } catch (e) {
-            return { ok: false, shard, error: e };
-        }
+        const result = await this.#makeTryShard(doer, options)(shard);
+        return result;
     }
 
     /**
      * Execute a single request against the Durable Object responsible for the given partitionKey.
-     * @param partitionKey The key to hash to determine the shard to use. The key will be hashed to determine the shard.
+     * @param partitionKey The partition key is used to determine the shard.
      * @param doer The callback function to execute with the Durable Object stub for the chosen shard.
+     * @param options The options to control the execution like retries.
      * @returns The result of the given `doer` callback function. If `doer()` throws the error is propagated.
      */
-    async one<R>(partitionKey: string, doer: (doStub: DurableObjectStub<T>) => Promise<R>): Promise<R> {
-        const response = await this.tryOne(partitionKey, doer, {});
+    async one<R>(
+        partitionKey: string,
+        doer: (doStub: DurableObjectStub<T>) => Promise<R>,
+        options?: Omit<TryOptions, "filterFn">,
+    ): Promise<R> {
+        const response = await this.tryOne(partitionKey, doer, options);
         if (!response.ok) {
             throw response.error;
         }
@@ -169,10 +171,7 @@ export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
             this.#options.concurrency,
             this.#options.numShards,
             { ...options, earlyReturn: false },
-            async (shard) => {
-                const stub = this.#stub(shard);
-                return await doer(stub, shard);
-            },
+            this.#makeTryShard(doer, options),
         );
         return Array.from(responses.results.values(), (r) => r).sort((a, b) => a.shard - b.shard);
     }
@@ -193,10 +192,7 @@ export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
             this.#options.concurrency,
             this.#options.numShards,
             { ...options, earlyReturn: true },
-            async (shard) => {
-                const stub = this.#stub(shard);
-                return await doer(stub, shard);
-            },
+            this.#makeTryShard(doer, options),
         );
         return [...responses.results.values()]
             .sort((a, b) => a.shard - b.shard)
@@ -284,10 +280,7 @@ export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
             this.#options.concurrency,
             this.#options.numShards,
             { filterFn: () => true, earlyReturn: false },
-            async (shard) => {
-                const stub = this.#stub(shard);
-                return await doer(stub, shard);
-            },
+            this.#makeTryShard(doer),
         );
         const finalResults: AllMaybeResult<R> = {
             results: Array.from({ length: this.#options.numShards }),
@@ -313,7 +306,7 @@ export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
         tryOptions: TryOptions & {
             earlyReturn: boolean;
         },
-        doer: (shard: ShardId) => Promise<R>,
+        tryShardDoer: (shard: ShardId) => Promise<TryResult<R>>,
     ): Promise<{ results: Map<number, TryResult<R>>; hasErrors: boolean }> {
         const results = new Map();
         let i = 0;
@@ -323,33 +316,19 @@ export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
                 return;
             }
             const shard = i++;
-            try {
-                if (!tryOptions.filterFn(shard)) {
-                    // Skip this one and go to the next shard.
-                    return await next();
-                }
-                const result = await tryN(
-                    Number.POSITIVE_INFINITY,
-                    async () => await doer(shard),
-                    (e, attempt) => {
-                        return !!tryOptions.shouldRetry?.(e, attempt, shard);
-                    },
-                );
-                results.set(shard, {
-                    ok: true,
-                    result: result,
-                    shard,
-                });
-            } catch (e) {
+
+            if (!tryOptions.filterFn(shard)) {
+                // Skip this one and go to the next shard.
+                return await next();
+            }
+
+            const shardResult = await tryShardDoer(shard);
+            results.set(shard, shardResult);
+            if (!shardResult.ok) {
                 if (tryOptions.earlyReturn) {
-                    throw e;
+                    throw shardResult.error;
                 }
                 hasErrors = true;
-                results.set(shard, {
-                    ok: false,
-                    shard: shard,
-                    error: e,
-                });
             }
             return await next();
         };
@@ -380,6 +359,27 @@ export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
         for (; idxAwait < n; idxAwait++) {
             yield await results[idxAwait];
         }
+    }
+
+    #makeTryShard<R>(
+        doer: (doStub: DurableObjectStub<T>, shard: ShardId) => Promise<R>,
+        tryOptions?: Omit<TryOptions, "filterFn">,
+    ): (shard: ShardId) => Promise<TryResult<R>> {
+        return async (shard: ShardId) => {
+            const stub = this.#stub(shard);
+            try {
+                const result = await tryN(
+                    Number.POSITIVE_INFINITY,
+                    async () => await doer(stub, shard),
+                    (e, attempt) => {
+                        return !!tryOptions?.shouldRetry?.(e, attempt, shard);
+                    },
+                );
+                return { ok: true, shard, result };
+            } catch (e) {
+                return { ok: false, shard, error: e };
+            }
+        };
     }
 
     #shardForPartitionKey(partitionKey: string): ShardId {

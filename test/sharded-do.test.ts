@@ -1,24 +1,23 @@
 import { env } from "cloudflare:test";
 import { assert, describe, expect, it } from "vitest";
 import { Env } from "./workers-test";
-import { FixedShardedDO } from "../src/do-sharding";
-import { a } from "vitest/dist/chunks/suite.B2jumIFP.js";
+import { StaticShardedDO } from "../src/do-sharding";
 
 declare module "cloudflare:test" {
     interface ProvidedEnv extends Env {}
 }
 
-describe("FixedShardedDO", { timeout: 20_000 }, async () => {
+describe("StaticShardedDO", { timeout: 20_000 }, async () => {
     it("N", async () => {
         const randomNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         randomNumbers.forEach((n) => {
-            const sdo = new FixedShardedDO(env.SQLDO, { numShards: n * 100 });
+            const sdo = new StaticShardedDO(env.SQLDO, { numShards: n * 100 });
             expect(sdo.N).toBe(n * 100);
         });
     });
 
     it("one()", async () => {
-        const sdo = new FixedShardedDO(env.SQLDO, { numShards: 7 });
+        const sdo = new StaticShardedDO(env.SQLDO, { numShards: 7 });
         const id1 = await sdo.one("test", async (stub) => {
             return await stub.actorId();
         });
@@ -38,8 +37,28 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
         expect(id1).not.to.equal(id2);
     });
 
+    it("one() with retries", async () => {
+        const sdo = new StaticShardedDO(env.SQLDO, { numShards: 3 });
+        let attempt = 0;
+        const result = await sdo.one(
+            "test",
+            async (stub) => {
+                attempt++;
+                if (attempt === 3) return await stub.echo("test-01");
+                else throw new Error("test-error");
+            },
+            {
+                shouldRetry(error, attempt, shard) {
+                    return attempt < 4;
+                },
+            },
+        );
+        expect(result).toBe("test-01");
+        expect(attempt).toBe(3);
+    });
+
     it("tryOne() with errors", async () => {
-        const sdo = new FixedShardedDO(env.SQLDO, { numShards: 7 });
+        const sdo = new StaticShardedDO(env.SQLDO, { numShards: 7 });
         const response1 = await sdo.tryOne("test", async (stub) => {
             return await stub.echo("test-01");
         });
@@ -56,7 +75,7 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
     });
 
     it("all()", async () => {
-        const sdo = new FixedShardedDO(env.SQLDO, { numShards: 11 });
+        const sdo = new StaticShardedDO(env.SQLDO, { numShards: 11 });
 
         const shards: number[] = [];
         const ids = await sdo.all(async (stub, shard) => {
@@ -68,7 +87,7 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
     });
 
     it("tryAll()", async () => {
-        const sdo = new FixedShardedDO(env.SQLDO, { numShards: 11 });
+        const sdo = new StaticShardedDO(env.SQLDO, { numShards: 11 });
 
         const shards: number[] = [];
         const results = await sdo.tryAll(async (stub, shard) => {
@@ -83,7 +102,7 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
     });
 
     it("tryAll() - with errors", async () => {
-        const sdo = new FixedShardedDO(env.SQLDO, { numShards: 11 });
+        const sdo = new StaticShardedDO(env.SQLDO, { numShards: 11 });
 
         const shards: number[] = [];
         const results = await sdo.tryAll(async (stub, shard) => {
@@ -110,7 +129,7 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
 
     it("trySome()", async () => {
         // Use less concurrency than shards to test the iteration properly.
-        const sdo = new FixedShardedDO(env.SQLDO, { numShards: 11, concurrency: 3 });
+        const sdo = new StaticShardedDO(env.SQLDO, { numShards: 11, concurrency: 3 });
 
         const shards: number[] = [];
         const ids = new Set<string>();
@@ -137,8 +156,41 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
         });
     });
 
+    it("should return correct results for each shard in case of some failing", async () => {
+        const sdo = new StaticShardedDO(env.SQLDO, { numShards: 3, concurrency: 1 });
+
+        const results = await sdo.tryAll(async (stub, shard) => {
+            if (shard === 1) {
+                throw new Error("test-error");
+            }
+            return `some-${shard}`;
+        });
+        expect(results).toEqual([
+            { ok: true, result: "some-0", shard: 0 },
+            { ok: false, error: new Error("test-error"), shard: 1 },
+            { ok: true, result: "some-2", shard: 2 },
+        ]);
+
+        const results2 = await sdo.trySome(
+            async (stub, shard) => {
+                if (shard === 1) {
+                    throw new Error("test-error");
+                }
+                return `some-${shard}`;
+            },
+            {
+                // Skip first shard.
+                filterFn: (shard) => shard > 0,
+            },
+        );
+        expect(results2).toEqual([
+            { ok: false, error: new Error("test-error"), shard: 1 },
+            { ok: true, result: "some-2", shard: 2 },
+        ]);
+    });
+
     it("genAll()", async () => {
-        const sdo = new FixedShardedDO(env.SQLDO, { numShards: 11 });
+        const sdo = new StaticShardedDO(env.SQLDO, { numShards: 11 });
 
         const shards: number[] = [];
         const ids: string[] = [];
@@ -155,7 +207,7 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
     describe("retries", async () => {
         it("trySome() with different retries among shards", async () => {
             // Make sure concurrency is less than the shards to test the iteration properly.
-            const sdo = new FixedShardedDO(env.SQLDO, { numShards: 11, concurrency: 3 });
+            const sdo = new StaticShardedDO(env.SQLDO, { numShards: 11, concurrency: 3 });
 
             const attemptsByShard = new Map<number, number>();
 
@@ -209,7 +261,7 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
 
     describe("shards vs concurrency", { timeout: 20_000 }, async () => {
         it("all() with 100 shards and 1000 subrequests", async () => {
-            const sdo = new FixedShardedDO(env.SQLDO, { numShards: 10, concurrency: 1000 });
+            const sdo = new StaticShardedDO(env.SQLDO, { numShards: 10, concurrency: 1000 });
 
             const shards: number[] = [];
             const ids = await sdo.all(async (stub, shard) => {
@@ -221,7 +273,7 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
         });
 
         it("all() with 100 shards and 100 subrequests", async () => {
-            const sdo = new FixedShardedDO(env.SQLDO, { numShards: 10, concurrency: 10 });
+            const sdo = new StaticShardedDO(env.SQLDO, { numShards: 10, concurrency: 10 });
 
             const shards: number[] = [];
             const ids = await sdo.all(async (stub, shard) => {
@@ -233,7 +285,7 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
         });
 
         it("all() with 100 shards and 10 subrequests", async () => {
-            const sdo = new FixedShardedDO(env.SQLDO, { numShards: 10, concurrency: 3 });
+            const sdo = new StaticShardedDO(env.SQLDO, { numShards: 10, concurrency: 3 });
 
             const shards: number[] = [];
             const ids = await sdo.all(async (stub, shard) => {
@@ -245,7 +297,7 @@ describe("FixedShardedDO", { timeout: 20_000 }, async () => {
         });
 
         it("all() with 100 shards and 1 subrequest", async () => {
-            const sdo = new FixedShardedDO(env.SQLDO, { numShards: 10, concurrency: 1 });
+            const sdo = new StaticShardedDO(env.SQLDO, { numShards: 10, concurrency: 1 });
 
             const shards: number[] = [];
             const ids = await sdo.all(async (stub, shard) => {
