@@ -128,7 +128,7 @@ const resultOfActionA = await sdo.one(partitionKey, async (stub, _shard) => {
 
 // Query all 11 shards.
 // Get their results in an array, or fail with the first error thrown.
-const resultOfActionA = await sdo.all(async (stub, _shard) => {
+const resultsOfActionA = await sdo.all(async (stub, _shard) => {
     return await stub.actionA();
 });
 
