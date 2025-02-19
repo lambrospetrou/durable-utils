@@ -25,7 +25,7 @@ export function jitterBackoff(attempt: number, baseDelayMs: number, maxDelayMs: 
 export async function tryN<T>(
     n: number,
     fn: (attempt: number) => Promise<T>,
-    isRetryable: (err: unknown, attempt: number) => boolean,
+    isRetryable: (err: unknown, nextAttempt: number) => boolean,
     options?: {
         baseDelayMs?: number;
         maxDelayMs?: number;
@@ -37,6 +37,30 @@ export async function tryN<T>(
         throw new Error("n must be greater than 0");
     }
     n = Math.floor(n);
+    return await tryWhile(fn, (err: unknown, nextAttempt: number) => {
+        return nextAttempt < n && isRetryable(err, nextAttempt);
+    }, options);
+}
+
+/**
+ * @param fn The function to call for each attempt. Receives the attempt number.
+ * @param isRetryable The function to call to determine if the error is retryable. Receives the error and the next attempt number.
+ * @param options The options for the retry strategy.
+ * @param options.baseDelayMs Number of milliseconds to use as multiplier for the exponential backoff.
+ * @param options.maxDelayMs Maximum number of milliseconds to wait.
+ * @param options.verbose If true, logs the error and attempt number to the console.
+ * @returns The result of the `fn` function or propagates the last error thrown once `isRetryable` returns false or all retries failed.
+ */
+export async function tryWhile<T>(
+    fn: (attempt: number) => Promise<T>,
+    isRetryable: (err: unknown, nextAttempt: number) => boolean,
+    options?: {
+        baseDelayMs?: number;
+        maxDelayMs?: number;
+
+        verbose?: boolean;
+    },
+): Promise<T> {
     const baseDelayMs = Math.floor(options?.baseDelayMs ?? 100);
     const maxDelayMs = Math.floor(options?.maxDelayMs ?? 3000);
     if (baseDelayMs <= 0 || maxDelayMs <= 0) {
@@ -52,14 +76,14 @@ export async function tryN<T>(
         } catch (err) {
             if (options?.verbose) {
                 console.info({
-                    message: "tryN",
+                    message: "tryWhile",
                     attempt,
                     error: String(err),
                     errorProps: err,
                 });
             }
             attempt += 1;
-            if (!isRetryable(err, attempt) || attempt > n) {
+            if (!isRetryable(err, attempt)) {
                 throw err;
             }
             const delay = jitterBackoff(attempt, baseDelayMs, maxDelayMs);
