@@ -7,7 +7,7 @@ import {
 } from "@cloudflare/workers-types";
 import { xxHash32 } from "js-xxhash";
 import { stubByName } from "./do-utils";
-import { tryN } from "./retries";
+import { tryWhile } from "./retries";
 
 // Golden Ratio constant used for better hash scattering
 // See https://softwareengineering.stackexchange.com/a/402543
@@ -113,7 +113,7 @@ export type AllMaybeResult<R> = {
  */
 export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     #doNamespace: DurableObjectNamespace<T>;
-    #options: StaticShardedDOOptions & { concurrency: number, prefixName: string };
+    #options: StaticShardedDOOptions & { concurrency: number; prefixName: string };
 
     constructor(doNamespace: DurableObjectNamespace<T>, options: StaticShardedDOOptions) {
         if (options.numShards <= 0) {
@@ -403,8 +403,7 @@ export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
         return async (shard: ShardId) => {
             const stub = this.#stub(shard);
             try {
-                const result = await tryN(
-                    Number.POSITIVE_INFINITY,
+                const result = await tryWhile(
                     async () => await doer(stub, shard),
                     (e, attempt) => {
                         return !!tryOptions?.shouldRetry?.(e, attempt, shard);
