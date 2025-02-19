@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2 (2025-02-19)
+
+- Added `tryWhile` retry utility function.
+- Deprecated the `tryN` overload with required `isRetryable` argument and introduced a new overload with `isRetryable` being part of `options`.
+
 ## 0.3.1 (2025-02-16)
 
 - Added `prefixName` to the `StaticShardedDO` constructor options. This allows multiple shard groups within the same Durable Object Namespace.
