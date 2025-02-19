@@ -4,6 +4,7 @@
 
 - Added `tryWhile` retry utility function.
 - Deprecated the `tryN` overload with required `isRetryable` argument and introduced a new overload with `isRetryable` being part of `options`.
+- Deprecated the `StaticShardedDOOptions.prefixName` option and introduced `StaticShardedDOOptions.shardGroupName` which is clearer and more descriptive.
 
 ## 0.3.1 (2025-02-16)
 

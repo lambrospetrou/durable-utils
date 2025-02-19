@@ -25,9 +25,17 @@ describe("StaticShardedDO", { timeout: 20_000 }, async () => {
         );
         ["", "    ", " \t \n \t "].forEach((prefixName) => {
             expect(() => new StaticShardedDO(env.SQLDO, { numShards: 1, prefixName })).toThrowError(
-                "Invalid prefix name, must not be empty or only whitespace",
+                "Invalid shard group name, must not be empty or only whitespace",
             );
         });
+        ["", "    ", " \t \n \t "].forEach((shardGroupName) => {
+            expect(() => new StaticShardedDO(env.SQLDO, { numShards: 1, shardGroupName })).toThrowError(
+                "Invalid shard group name, must not be empty or only whitespace",
+            );
+        });
+        expect(
+            () => new StaticShardedDO(env.SQLDO, { numShards: 1, shardGroupName: "hello", prefixName: "boom" }),
+        ).toThrowError("Cannot use both shardGroupName and prefixName options together");
     });
 
     it("one() throws", async () => {
@@ -70,6 +78,12 @@ describe("StaticShardedDO", { timeout: 20_000 }, async () => {
         const id1 = await sdo.one("test", async (stub) => {
             return await stub.actorId();
         });
+        // Make sure same partition key goes to the same shard.
+        expect(
+            await sdo.one("test", async (stub) => {
+                return await stub.actorId();
+            }),
+        ).toEqual(id1);
         const result = await sdo.one("test", async (stub) => {
             return await stub.echo("test-01");
         });
@@ -257,12 +271,12 @@ describe("StaticShardedDO", { timeout: 20_000 }, async () => {
                 return await stub.actorId();
             });
 
-            const sdo2 = new StaticShardedDO(env.SQLDO, { numShards: 3, prefixName: "groupOfShards2" });
+            const sdo2 = new StaticShardedDO(env.SQLDO, { numShards: 3, shardGroupName: "groupOfShards2" });
             const result2 = await sdo2.one("test", async (stub) => {
                 return await stub.actorId();
             });
 
-            const sdo3 = new StaticShardedDO(env.SQLDO, { numShards: 3, prefixName: "groupOfShards3" });
+            const sdo3 = new StaticShardedDO(env.SQLDO, { numShards: 3, shardGroupName: "groupOfShards3" });
             const result3 = await sdo3.one("test", async (stub) => {
                 return await stub.actorId();
             });
@@ -274,12 +288,12 @@ describe("StaticShardedDO", { timeout: 20_000 }, async () => {
         });
 
         it("should trim whitespace before use", async () => {
-            const sdo2 = new StaticShardedDO(env.SQLDO, { numShards: 3, prefixName: "  \ta " });
+            const sdo2 = new StaticShardedDO(env.SQLDO, { numShards: 3, shardGroupName: "  \ta " });
             const result2 = await sdo2.one("test", async (stub) => {
                 return await stub.actorId();
             });
 
-            const sdo3 = new StaticShardedDO(env.SQLDO, { numShards: 3, prefixName: "a " });
+            const sdo3 = new StaticShardedDO(env.SQLDO, { numShards: 3, shardGroupName: "a " });
             const result3 = await sdo3.one("test", async (stub) => {
                 return await stub.actorId();
             });

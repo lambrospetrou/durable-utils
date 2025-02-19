@@ -32,11 +32,12 @@ export interface StaticShardedDOOptions {
     concurrency?: number;
 
     /**
-     * The prefix name to use for the Durable Objects created.
-     * This allows you to use multiple groups of sharded DOs in the same namespace.
-     * Warning: The value will be trimmed on both ends before used.
+     * The group name for all the Durable Object shards created within this `StaticShardedDO` instance.
+     * This allows you to use multiple groups of sharded DOs in the same Durable Object namespace.
+     *
+     * Different groups of sharded DOs will not interfere with each other, and will have their own Durable Objects.
      */
-    prefixName?: string;
+    shardGroupName?: string;
 
     /**
      * A function that returns a location hint for a specific shard.
@@ -44,6 +45,16 @@ export interface StaticShardedDOOptions {
      * If the function returns `undefined`, the Durable Object will be placed in the closest region.
      */
     shardLocationHintFn?: (shard: ShardId) => DurableObjectLocationHint | undefined;
+
+    //////////////
+    // DEPRECATED
+
+    /**
+     * The prefix name to use for the Durable Objects created.
+     * This allows you to use multiple groups of sharded DOs in the same namespace.
+     * @deprecated Use `shardGroupName` instead.
+     */
+    prefixName?: string;
 }
 
 /**
@@ -113,7 +124,7 @@ export type AllMaybeResult<R> = {
  */
 export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     #doNamespace: DurableObjectNamespace<T>;
-    #options: StaticShardedDOOptions & { concurrency: number; prefixName: string };
+    #options: Omit<StaticShardedDOOptions, "prefixName"> & { concurrency: number; shardGroupName: string };
 
     constructor(doNamespace: DurableObjectNamespace<T>, options: StaticShardedDOOptions) {
         if (options.numShards <= 0) {
@@ -122,10 +133,13 @@ export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
         if (options.concurrency !== undefined && options.concurrency <= 0) {
             throw new Error("Invalid number of subrequests, must be greater than 0");
         }
-        if (options.prefixName !== undefined) {
-            options.prefixName = (options.prefixName ?? "").trim();
-            if (!options.prefixName) {
-                throw new Error("Invalid prefix name, must not be empty or only whitespace");
+        if (options.shardGroupName !== undefined || options.prefixName !== undefined) {
+            if (options.shardGroupName !== undefined && options.prefixName !== undefined) {
+                throw new Error("Cannot use both shardGroupName and prefixName options together");
+            }
+            options.shardGroupName = (options.shardGroupName ?? options.prefixName ?? "").trim();
+            if (!options.shardGroupName) {
+                throw new Error("Invalid shard group name, must not be empty or only whitespace");
             }
         }
 
@@ -134,7 +148,7 @@ export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
             ...options,
             concurrency: options.concurrency ?? 10,
             // WARNING: Never change the default value of this otherwise there will be data loss!
-            prefixName: options.prefixName ?? "fixed-sharded-do",
+            shardGroupName: options.shardGroupName ?? "fixed-sharded-do",
         };
     }
 
@@ -422,7 +436,7 @@ export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     }
 
     #stub(shard: ShardId): DurableObjectStub<T> {
-        return stubByName(this.#doNamespace, `${this.#options.prefixName}-${shard}`, this.#stubOptions(shard));
+        return stubByName(this.#doNamespace, `${this.#options.shardGroupName}-${shard}`, this.#stubOptions(shard));
     }
 
     #stubOptions(shard: ShardId): DurableObjectNamespaceGetDurableObjectOptions {
