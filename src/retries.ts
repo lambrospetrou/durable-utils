@@ -12,11 +12,25 @@ export function jitterBackoff(attempt: number, baseDelayMs: number, maxDelayMs: 
 }
 
 export type TryNOptions = {
-    isRetryable?: (err: unknown, nextAttempt: number) => boolean,
+    /**
+     * @param err Error thrown by the function.
+     * @param nextAttempt Number of next attempt to make.
+     * @returns Returns true if the error and nextAttempt number is retryable.
+     */
+    isRetryable?: (err: unknown, nextAttempt: number) => boolean;
 
+    /**
+     * Number of milliseconds to use as multiplier for the exponential backoff.
+     */
     baseDelayMs?: number;
+    /**
+     * Maximum number of milliseconds to wait.
+     */
     maxDelayMs?: number;
 
+    /**
+     * If true, logs the error and attempt number to the console.
+     */
     verbose?: boolean;
 };
 
@@ -30,11 +44,7 @@ export type TryNOptions = {
  * @param options.verbose If true, logs the error and attempt number to the console.
  * @returns The result of the `fn` function or propagates the last error thrown once `isRetryable` returns false or all retries failed.
  */
-export async function tryN<T>(
-    n: number,
-    fn: (attempt: number) => Promise<T>,
-    options?: TryNOptions
-): Promise<T>;
+export async function tryN<T>(n: number, fn: (attempt: number) => Promise<T>, options?: TryNOptions): Promise<T>;
 /**
  * @deprecated Use the overload with 3rd argument being `options`. This function overload will be removed in the next version.
  * @param n Number of total attempts to make.
@@ -49,17 +59,17 @@ export async function tryN<T>(
 export async function tryN<T>(
     n: number,
     fn: (attempt: number) => Promise<T>,
-    isRetryable: ((err: unknown, nextAttempt: number) => boolean),
+    isRetryable: (err: unknown, nextAttempt: number) => boolean,
     /**
      * @deprecated Use the `options` 3rd argument instead.
      */
-    options?: TryNOptions
+    options?: TryNOptions,
 ): Promise<T>;
 export async function tryN<T>(
     n: number,
     fn: (attempt: number) => Promise<T>,
     optionsOrFunction?: TryNOptions | ((err: unknown, nextAttempt: number) => boolean),
-    optionsOld?: TryNOptions
+    optionsOld?: TryNOptions,
 ): Promise<T> {
     if (n <= 0) {
         throw new Error("n must be greater than 0");
@@ -78,9 +88,13 @@ export async function tryN<T>(
         };
     }
 
-    return await tryWhile(fn, (err: unknown, nextAttempt: number) => {
-        return nextAttempt <= n && (options.isRetryable?.(err, nextAttempt) ?? true);
-    }, options);
+    return await tryWhile(
+        fn,
+        (err: unknown, nextAttempt: number) => {
+            return nextAttempt <= n && (options.isRetryable?.(err, nextAttempt) ?? true);
+        },
+        options,
+    );
 }
 
 /**
