@@ -230,7 +230,7 @@ Returns `true` for retryable errors, excluding overloaded errors. This follows C
 
 This package provides utilities for handling retries with exponential backoff and jitter.
 
-### `tryN<T>(n, fn, isRetryable, options)`
+### `tryN<T>(n, fn, options)`
 
 Executes a function with retry logic, implementing exponential backoff with full jitter.
 
@@ -241,13 +241,40 @@ import { isErrorRetryable } from "durable-utils/do-utils";
 await tryN(
     3,
     async (_attempt) => fetch(url),
-    (err, _nextAttempt) => isErrorRetryable(err),
 );
 ```
 
 **Parameters**
 
 - `n`: Maximum number of attempts.
+- `fn`: Async function to execute, receives current attempt number and returns a value `T`.
+- `options`: Optional configuration object
+    - `baseDelayMs`: Base delay for exponential backoff (default: 100ms).
+    - `maxDelayMs`: Maximum delay between retries (default: 3000ms).
+    - `isRetryable`: Function that determines if an error should trigger a retry.
+    - `verbose`: Enable logging of retry attempts.
+
+The retry delay is calculated using the "Full Jitter" approach, which helps prevent thundering herd problems, as described in Marc Brooker's AWS post [Exponential Backoff And Jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/).
+
+Each retry attempt uses a random delay equal to `random_between(0, min(2^attempt * baseDelayMs, maxDelayMs))`.
+
+### `tryWhile<T>(fn, isRetryable, options)`
+
+Executes a function with retry logic, implementing exponential backoff with full jitter.
+
+```javascript
+import { tryWhile } from  "durable-utils/retries";
+import { isErrorRetryable } from "durable-utils/do-utils";
+
+await tryWhile(
+    async (_attempt) => fetch(url),
+    // 4 total attempts.
+    (_err, nextAttempt) => nextAttempt < 5,
+);
+```
+
+**Parameters**
+
 - `fn`: Async function to execute, receives current attempt number and returns a value `T`.
 - `isRetryable`: Function that determines if an error should trigger a retry.
 - `options`: Optional configuration object
