@@ -159,25 +159,27 @@ const resultsList = await sdo.trySome(async (stub, shard) => {
 
 You can create multiple independent groups of shards within the same Durable Object Namespace.
 
-Provide a unique `prefixName` in the `StaticShardedDO` constructor options to use different Durable Objects.
+Provide a unique `shardGroupName` in the `StaticShardedDO` constructor options to use different Durable Objects.
+
+The default shard group name if none is provided is `fixed-sharded-do`.
 
 ```javascript
-describe("prefix names", async () => {
-    it("default prefix should not conflict with prefixed names", async () => {
+describe("shardGroupName", async () => {
+    it("default prefix should not conflict with shard group names", async () => {
         const sdo = new StaticShardedDO(env.SQLDO, { numShards: 3 });
         const result = await sdo.one("test", async (stub) => {
             return await stub.actorId();
         });
 
         const sdo2 = new StaticShardedDO(env.SQLDO, {
-            numShards: 3, prefixName: "groupOfShards2",
+            numShards: 3, shardGroupName: "groupOfShards2",
         });
         const result2 = await sdo2.one("test", async (stub) => {
             return await stub.actorId();
         });
 
         const sdo3 = new StaticShardedDO(env.SQLDO, {
-            numShards: 3, prefixName: "groupOfShards3",
+            numShards: 3, shardGroupName: "groupOfShards3",
         });
         const result3 = await sdo3.one("test", async (stub) => {
             return await stub.actorId();
@@ -236,7 +238,6 @@ Executes a function with retry logic, implementing exponential backoff with full
 
 ```javascript
 import { tryN } from  "durable-utils/retries";
-import { isErrorRetryable } from "durable-utils/do-utils";
 
 await tryN(
     3,
@@ -268,8 +269,7 @@ import { isErrorRetryable } from "durable-utils/do-utils";
 
 await tryWhile(
     async (_attempt) => fetch(url),
-    // 4 total attempts.
-    (_err, nextAttempt) => nextAttempt < 5,
+    (err, nextAttempt) => nextAttempt < 5 && isErrorRetryable(err),
 );
 ```
 
