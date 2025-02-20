@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3 and 0.3.4 (2025-02-20)
+
+- README updates.
+
 ## 0.3.2 (2025-02-19)
 
 - Added `tryWhile` retry utility function.
