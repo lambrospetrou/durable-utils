@@ -70,7 +70,7 @@ export class AutoscaledShardedDOClient_EXPERIMENTAL_V0<T extends Rpc.DurableObje
 
     async tryOne<R>(
         partitionKey: string,
-        doer: (doStub: DurableObjectStub<T>, shard: ShardId) => Promise<R>,
+        doer: (rpcCaller: ClassProxyType<DurableObjectStubUserFns<T>>, shard: ShardId) => Promise<R>,
         options?: TryOneOptions,
     ): Promise<TryResult<R>> {
         // FIXME
@@ -84,9 +84,71 @@ export class AutoscaledShardedDOClient_EXPERIMENTAL_V0<T extends Rpc.DurableObje
         // However, this is not very efficient if the worker is far from the Durable Objects.
         // The other approach is to have the first DO shard that receives the request to handle the redirection to the correct shard.
         //
-        throw new Error("Not implemented");
+
+        const { history } = this.options.shardConfigSnapshot;
+        if (history.length <= 0) {
+            throw new Error("shardConfigSnapshot must have at least one entry");
+        }
+        const shardId = jumpConsistentHash(partitionKey, history.at(-1)!.capacity);
+        const stub = stubByName(this.options.shardStorageNamespace, `${this.options.shardGroupName}::${shardId}`);
+        try {
+            const rpcCaller = new Proxy({} as StubProxyType<T>, {
+                get: (_, methodName: string) => {
+                    return async (...args: any[]) => {
+                        // Proxy the call to the stub but using our own method first
+                        // that will handle the routing to the right shard.
+                        // return (stub as any)[methodName](...args);
+
+                        console.log({ message: "rpcCaller", partitionKey, methodName, args });
+
+                        const stubCasted = stub as unknown as AutoscaledShardedDOShardInterface_EXPERIMENTAL_V0
+                        return await stubCasted.__rpcCall({
+                            shardGroupName: this.options.shardGroupName,
+                            shardIdx: shardId,
+                        }, partitionKey, methodName, args);
+                    };
+                },
+            });
+            const result = await doer(rpcCaller, shardId);
+            return { ok: true, shard: shardId, result };
+        } catch (error) {
+            return { ok: false, shard: shardId, error };
+        }
     }
 }
+
+// TODO Find a better way to only expose user methods and public DO stub methods.
+type DurableObjectStubUserFns<T extends Rpc.DurableObjectBranded | undefined> = Omit<
+    DurableObjectStub<T>,
+    "__DURABLE_OBJECT_BRAND" | "scheduled" | "queue" | "alarm" | "sql" | "ctx" | "env"
+>;
+
+type StubProxyType<T extends Rpc.DurableObjectBranded | undefined> = {
+    [K in keyof DurableObjectStub<T>]: DurableObjectStub<T>[K] extends (...args: any[]) => any
+        ? (...args: Parameters<DurableObjectStub<T>[K]>) => ReturnType<DurableObjectStub<T>[K]>
+        : DurableObjectStub<T>[K];
+};
+
+type ClassProxyType<T> = {
+    [K in keyof T]: T[K] extends (...args: any[]) => any ? (...args: Parameters<T[K]>) => ReturnType<T[K]> : T[K];
+};
+
+type StubMethodCaller<T extends Rpc.DurableObjectBranded | undefined> = {
+    <K extends keyof DurableObjectStub<T>>(
+        methodName: K,
+        ...args: DurableObjectStub<T>[K] extends (...args: any[]) => any ? Parameters<DurableObjectStub<T>[K]> : never
+    ): DurableObjectStub<T>[K] extends (...args: any[]) => any ? ReturnType<DurableObjectStub<T>[K]> : never;
+};
+
+// First, define the class type parameter
+type ClassMethodCaller<T> = {
+    // K is constrained to be a key of T that is a function
+    <K extends keyof T>(
+        methodName: K,
+        // Parameters<T[K]> extracts the parameter types of the method
+        ...args: T[K] extends (...args: any[]) => any ? Parameters<T[K]> : never
+    ): T[K] extends (...args: any[]) => any ? ReturnType<T[K]> : never;
+};
 
 ////////////////////////////////////////////////////////////////////////
 // The storage shard Durable Object wrapper.
@@ -95,6 +157,15 @@ export class AutoscaledShardedDOClient_EXPERIMENTAL_V0<T extends Rpc.DurableObje
 
 export interface AutoscaledShardedDOStorageShardHooks_EXPERIMENTAL_V0 {
     shouldScaleOut(): Promise<{ should: boolean; reason?: string }>;
+}
+
+export interface AutoscaledShardedDOShardInterface_EXPERIMENTAL_V0 {
+    __rpcCall(
+        rpcCtx: AutoscaledShardedDOShardRequestContext,
+        partitionKey: string,
+        methodName: string,
+        methodArgs: any[],
+    ): Promise<any>;
 }
 
 export type AutoscaledShardedDShardOptions = {
@@ -157,6 +228,28 @@ export class AutoscaledShardedDOShard_EXPERIMENTAL_V0 {
                 setInterval(() => this.periodicCapacityCheck(), options.scaleOutIntervalCheckMs ?? 10_000);
             }
         });
+    }
+
+    implementInterface(doThis: DurableObject<unknown>): AutoscaledShardedDOShardInterface_EXPERIMENTAL_V0 {
+        Object.getPrototypeOf(doThis).__rpcCall = async (
+            rpcCtx: AutoscaledShardedDOShardRequestContext,
+            partitionKey: string,
+            methodName: string,
+            methodArgs: any[],
+        ) => {
+            // FIXME Do all the necessary routing there to find the right shard for the partition key.
+            console.log({
+                message: "AutoscaledShardedDOShard: rpcCall",
+                rpcCtx,
+                partitionKey,
+                methodName,
+                methodArgs,
+            });
+            // TODO Hook: hasPartitionKey
+
+            return await (doThis as any)[methodName](...methodArgs);
+        };
+        return doThis as unknown as AutoscaledShardedDOShardInterface_EXPERIMENTAL_V0;
     }
 
     private async periodicCapacityCheck() {
@@ -239,4 +332,76 @@ export class AutoscaledShardedDOControlPlane_EXPERIMENTAL_V0 extends DurableObje
             reason,
         });
     }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// INTERNALS
+///////////////////////////////////////////////////////////////////////////////
+
+function jumpConsistentHash(keyInput: string | number, numBuckets: number): number {
+    let key: number;
+    if (typeof keyInput === "string") {
+        key = hashString(keyInput);
+    } else {
+        key = keyInput;
+    }
+    return consistentHash(key, numBuckets);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Claude generated the following, need to cross-reference with the paper:
+// [A Fast, Minimal Memory, Consistent Hash Algorithm](https://arxiv.org/ftp/arxiv/papers/1406/1406.2294.pdf)
+//
+
+// 64-bit Linear Congruential Generator implementation
+class Random64 {
+    private seed: bigint;
+    private multiplier: bigint;
+    private increment: bigint;
+
+    constructor(seed: number) {
+        // Convert seed to BigInt to handle 64-bit operations
+        this.seed = BigInt(seed);
+        // LCG parameters optimized for 64-bit
+        this.multiplier = BigInt("2862933555777941757");
+        this.increment = BigInt("3037000493");
+    }
+
+    next() {
+        // Update seed using LCG formula: seed = (multiplier * seed + increment)
+        this.seed = (this.multiplier * this.seed + this.increment) & BigInt("0xFFFFFFFFFFFFFFFF");
+
+        // Convert to double between 0 and 1
+        // We use 53 bits as that's the precision of JavaScript numbers
+        return Number(this.seed >> BigInt(11)) / Math.pow(2, 53);
+    }
+}
+
+function consistentHash(key: number, numBuckets: number): number {
+    // Initialize our random number generator with the key
+    const random = new Random64(key);
+
+    let b = -1; // bucket number before the previous jump
+    let j = 0; // bucket number before the current jump
+
+    while (j < numBuckets) {
+        b = j;
+        const r = random.next();
+        j = Math.floor((b + 1) / r);
+    }
+
+    return b;
+}
+
+function hashString(str: string) {
+    let hash = 5381;
+
+    for (let i = 0; i < str.length; i++) {
+        // hash * 33 + character code
+        hash = (hash << 5) + hash + str.charCodeAt(i);
+        // Convert to 32-bit unsigned integer
+        hash = hash >>> 0;
+    }
+
+    return hash;
 }

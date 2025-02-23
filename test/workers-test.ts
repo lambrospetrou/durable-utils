@@ -7,6 +7,10 @@ import {
     RegionPlacer,
     RegionPlacerDO,
 } from "../src/experimental/region-placer";
+import {
+    AutoscaledShardedDOControlPlane_EXPERIMENTAL_V0,
+    AutoscaledShardedDOShard_EXPERIMENTAL_V0,
+} from "../src/experimental/autoscaled-sharded-do";
 export { RegionPlacer, RegionPlacerDO } from "../src/experimental/region-placer";
 
 export interface Env {
@@ -15,6 +19,10 @@ export interface Env {
 
     RegionPlacer: Service<RegionPlacer>;
     TargetWorker: Service<TargetWorker>;
+
+    AutoscaledShardedDOShardConfigCache: KVNamespace;
+    SHARDED_DO: DurableObjectNamespace<ShardedDO>;
+    SHARDED_DO_CONTROL_PLANE: DurableObjectNamespace<AutoscaledShardedDOControlPlane_EXPERIMENTAL_V0>;
 }
 
 export class SQLiteDO extends DurableObject<Env> {
@@ -35,6 +43,39 @@ export class SQLiteDO extends DurableObject<Env> {
 
     async sql(query: string) {
         return this.ctx.storage.sql.exec(query).toArray();
+    }
+}
+
+export class ShardedDO extends DurableObject<Env> {
+    constructor(
+        readonly ctx: DurableObjectState,
+        readonly env: Env,
+    ) {
+        super(ctx, env);
+        const shard = new AutoscaledShardedDOShard_EXPERIMENTAL_V0({
+            controlPlaneDONamespace: env.SHARDED_DO_CONTROL_PLANE,
+            bindingNameShardDONamespace: "SHARDED_DO",
+            bindingNameShardConfigCache: "AutoscaledShardedDOShardConfigCache",
+
+            doCtx: ctx,
+            hooks: {
+                async shouldScaleOut() {
+                    return {
+                        should: false,
+                        reason: "no reason",
+                    };
+                },
+            },
+        });
+        shard.implementInterface(this);
+    }
+
+    async actorId() {
+        return String(this.ctx.id);
+    }
+
+    async echo(s: string) {
+        return s;
     }
 }
 
