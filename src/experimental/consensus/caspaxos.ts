@@ -23,6 +23,9 @@ import { tryWhile } from "../../retries";
 
 // TODO Probably move this to the general consensus module.
 export interface KV {
+
+    // TODO Add optional options for retries to each operation.
+
     // Core operations
     get<T>(key: string): Promise<T | null>;
     set<T>(key: string, value: T): Promise<T>;
