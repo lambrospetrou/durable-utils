@@ -26,5 +26,10 @@ describe("CASPaxosKV", { timeout: 20_000 }, async () => {
 
         expect(await kv.compareAndSet("foo-key-1", 123456, 11)).toBe(11);
         expect(await kv.compareAndSet("foo-key-1", 99, 22)).toBe(11);
+
+        expect(await kv.update<number>("foo-key-1", (v) => (v ?? 100) +1)).toBe(12);
+
+        expect(await kv.delete("foo-key-1")).toBe(true);
+        expect(await kv.get("foo-key-1")).toBe(null);
     });
 });

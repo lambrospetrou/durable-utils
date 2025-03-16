@@ -66,54 +66,47 @@ export class CASPaxosKV<T extends Rpc.DurableObjectBranded | undefined> implemen
     async get<T>(key: string): Promise<T | null> {
         return await tryWhile(
             () => this.#proposer.change<T | null>(key, (curr) => curr),
-            (e: any, nextAttempt: number) => {
-                if (nextAttempt > 3) {
-                    return false;
-                }
-                if (e instanceof ProposerError) {
-                    return e.isRetryable();
-                }
-                return false;
-            },
+            this.#shouldRetry
         );
     }
 
     async set<T>(key: string, value: T): Promise<T> {
         return await tryWhile(
             () => this.#proposer.change<T>(key, (_) => value),
-            (e: any, nextAttempt: number) => {
-                if (nextAttempt > 3) {
-                    return false;
-                }
-                if (e instanceof ProposerError) {
-                    return e.isRetryable();
-                }
-                return false;
-            },
+            this.#shouldRetry
         );
     }
 
     async update<T>(key: string, updateFn: (currentValue: T | null) => T): Promise<T> {
-        throw new Error("Method not implemented.");
-    }
-
-    async delete(key: string): Promise<boolean> {
-        throw new Error("Method not implemented.");
+        return await tryWhile(
+            () => this.#proposer.change<T>(key, updateFn),
+            this.#shouldRetry
+        );
     }
 
     async compareAndSet<T>(key: string, expected: T | null, newValue: T): Promise<T | null> {
         return await tryWhile(
             () => this.#proposer.change<T | null>(key, (curr) => (curr === expected ? newValue : curr)),
-            (e: any, nextAttempt: number) => {
-                if (nextAttempt > 3) {
-                    return false;
-                }
-                if (e instanceof ProposerError) {
-                    return e.isRetryable();
-                }
-                return false;
-            }
+            this.#shouldRetry
         );
+    }
+
+    async delete(key: string): Promise<boolean> {
+        return await tryWhile(
+            () => this.#proposer.change<null>(key, (_) => null),
+            // TODO Should we auto-retry for the delete?
+            this.#shouldRetry
+        ) === null;
+    }
+
+    #shouldRetry(e: any, nextAttempt: number): boolean {
+        if (nextAttempt > 3) {
+            return false;
+        }
+        if (e instanceof ProposerError) {
+            return e.isRetryable();
+        }
+        return false;
     }
 
     #makeNodes(): { prepareNodes: NodeGroup<PrepareNode>; acceptNodes: NodeGroup<AcceptNode> } {
