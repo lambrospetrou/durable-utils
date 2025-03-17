@@ -62,6 +62,14 @@ export class CASPaxosKV<T extends Rpc.DurableObjectBranded | undefined> implemen
 
         const nodes = this.#makeNodes();
         console.log({ message: "CASPaxosKV", ...nodes });
+
+        if (nodes.acceptNodes.nodes.length % 2 === 0) {
+            throw new Error("Total number of nodes must be odd to ensure a majority quorum like 3,5,7.");
+        }
+        if (nodes.acceptNodes.nodes.length < 3) {
+            throw new Error("Total number of nodes must be at least 3 to ensure a majority quorum.");
+        }
+
         // TODO Improve the proposer ID when used in Workers to something deterministic?
         this.#proposer = new Proposer(BallotNumberUtils.fromId(crypto.randomUUID()), nodes.prepareNodes, nodes.acceptNodes);
     }

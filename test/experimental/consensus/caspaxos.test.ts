@@ -7,18 +7,22 @@ declare module "cloudflare:test" {
     interface ProvidedEnv extends Env {}
 }
 
+function makeKV(env: Env) {
+    return new CASPaxosKV(env.CASPaxosDO, {
+        clusterName: "test-cluster",
+        topology: {
+            "type": "locationHintWeighted",
+            "locations": {
+                "eeur": 2,
+                "weur": 1,
+            }
+        }
+    });
+}
+
 describe("CASPaxosKV", { timeout: 20_000 }, async () => {
     it("should work in happy path", async () => {
-        const kv = new CASPaxosKV(env.CASPaxosDO, {
-            clusterName: "test-cluster",
-            topology: {
-                "type": "locationHintWeighted",
-                "locations": {
-                    "eeur": 2,
-                    "weur": 1,
-                }
-            }
-        });
+        const kv = makeKV(env);
 
         expect(await kv.get("foo-key-1")).toBe(null);
         expect(await kv.set("foo-key-1", 123456)).toBe(123456);
@@ -31,5 +35,28 @@ describe("CASPaxosKV", { timeout: 20_000 }, async () => {
 
         expect(await kv.delete("foo-key-1")).toBe(true);
         expect(await kv.get("foo-key-1")).toBe(null);
+    });
+
+    it("should throw with invalid options", async () => {
+        expect(() => new CASPaxosKV(env.CASPaxosDO, {
+            clusterName: "test-cluster",
+            topology: {
+                "type": "locationHintWeighted",
+                "locations": {
+                    "eeur": 2,
+                    "weur": 2,
+                }
+            },
+        })).toThrowError("Total number of nodes must be odd to ensure a majority quorum like 3,5,7.");
+
+        expect(() => new CASPaxosKV(env.CASPaxosDO, {
+            clusterName: "test-cluster",
+            topology: {
+                "type": "locationHintWeighted",
+                "locations": {
+                    "weur": 1,
+                }
+            },
+        })).toThrowError("Total number of nodes must be at least 3 to ensure a majority quorum.");
     });
 });
