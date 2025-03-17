@@ -16,9 +16,11 @@ bindings = [
 	{ name = "SQLDO", class_name = "SQLiteDO" },
 
 	# Required DO to bind into our Worker project to be able to regionally place Worker calls.
-	{ name = "RegionPlacerDO", class_name = "RegionPlacerDO" }
+	{ name = "RegionPlacerDO", class_name = "RegionPlacerDO" },
+
+	{ name = "CASPaxosDO", class_name = "CASPaxosDO" }
 ]
 
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["SQLiteDO", "RegionPlacerDO"]
+new_sqlite_classes = ["SQLiteDO", "RegionPlacerDO", "CASPaxosDO"]

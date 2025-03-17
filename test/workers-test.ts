@@ -7,11 +7,14 @@ import {
     RegionPlacer,
     RegionPlacerDO,
 } from "../src/experimental/region-placer";
+import { AcceptorClient, PrepareNode, AcceptNode, PrepareResult, AcceptResult, BallotNumber } from "../src/experimental/consensus/caspaxos"
 export { RegionPlacer, RegionPlacerDO } from "../src/experimental/region-placer";
 
 export interface Env {
     SQLDO: DurableObjectNamespace<SQLiteDO>;
     RegionPlacerDO: DurableObjectNamespace<RegionPlacerDO>;
+
+    CASPaxosDO: DurableObjectNamespace<CASPaxosDO>;
 
     RegionPlacer: Service<RegionPlacer>;
     TargetWorker: Service<TargetWorker>;
@@ -35,6 +38,29 @@ export class SQLiteDO extends DurableObject<Env> {
 
     async sql(query: string) {
         return this.ctx.storage.sql.exec(query).toArray();
+    }
+}
+
+export class CASPaxosDO extends DurableObject<Env> implements PrepareNode, AcceptNode {
+    private acceptorClient: AcceptorClient;
+    constructor(
+        readonly ctx: DurableObjectState,
+        readonly env: Env,
+    ) {
+        super(ctx, env);
+        this.acceptorClient = new AcceptorClient(ctx.storage);
+    }
+
+    async actorId() {
+        return String(this.ctx.id);
+    }
+
+    async prepare(key: string, tick: BallotNumber, extra?: any): Promise<PrepareResult> {
+        return await this.acceptorClient.prepare(key, tick, extra);
+    }
+    
+    async accept(key: string, ballot: BallotNumber, value: any, promise: BallotNumber, extra?: any): Promise<AcceptResult> {
+        return await this.acceptorClient.accept(key, ballot, value, promise, extra);
     }
 }
 
