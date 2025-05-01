@@ -79,6 +79,16 @@ export class TenantDO extends DurableObject {
             doStorage: ctx.storage,
             migrations: Migrations,
         });
+
+        // You can run your migrations in the constructor if you are certain
+        // that all requests incoming to your Durable Object (DO) are legit.
+        // If you want to avoid writing to storage and incurring charges when
+        // any request is processed by your DO run them right before you need them
+        // as seen inside the `operationThatNeedsSQLite()` function below.
+        //
+        // ctx.blockConcurrencyWhile(async () => {
+        //     await this._migrations.runAll();
+        // });
     }
 
     async operationThatNeedsSQLite() {
