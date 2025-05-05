@@ -6,6 +6,33 @@
     "main": "index.js",
     "typings": "index.d.ts",
     "type": "module",
+    "exports": {
+        ".": {
+            "types": "./index.d.ts",
+            "import": "./index.esm.js",
+            "require": "./index.js"
+        },
+        "./do-sharding": {
+            "types": "./do-sharding.d.ts",
+            "import": "./do-sharding.esm.js",
+            "require": "./do-sharding.js"
+        },
+        "./do-utils": {
+            "types": "./do-utils.d.ts",
+            "import": "./do-utils.esm.js",
+            "require": "./do-utils.js"
+        },
+        "./sql-migrations": {
+            "types": "./sql-migrations.d.ts",
+            "import": "./sql-migrations.esm.js",
+            "require": "./sql-migrations.js"
+        },
+        "./retries": {
+            "types": "./retries.d.ts",
+            "import": "./retries.esm.js",
+            "require": "./retries.js"
+        }
+    },
     "scripts": {
         "fmt": "npx prettier . --check --write --ignore-unknown",
         "gen:types": "tsc --emitDeclarationOnly",
