@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.5 (2025-05-05)
+
+- Fix the ESM module imports for each individual sub-module.
+
 ## 0.3.3 and 0.3.4 (2025-02-20)
 
 - README updates.

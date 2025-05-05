@@ -1,6 +1,6 @@
 {
     "name": "durable-utils",
-    "version": "0.3.4",
+    "version": "0.3.5",
     "description": "Utilities for Cloudflare Durable Objects and Workers, including SQL migrations, sharding and retry utilities, and more.",
     "module": "index.esm.js",
     "main": "index.js",
