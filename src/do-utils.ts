@@ -1,10 +1,3 @@
-import {
-    DurableObjectNamespace,
-    DurableObjectNamespaceGetDurableObjectOptions,
-    DurableObjectStub,
-    Rpc,
-} from "@cloudflare/workers-types";
-
 /**
  * Tiny utility to get a Durable Object stub by name using `idFromName`.
  * @param doNamespace The Durable Object namespace to create a stub from.

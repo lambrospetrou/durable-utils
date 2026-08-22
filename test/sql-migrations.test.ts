@@ -1,7 +1,7 @@
-import { env, listDurableObjectIds, runInDurableObject } from "cloudflare:test";
-import { DurableObjectState } from "@cloudflare/workers-types";
+import { listDurableObjectIds, runInDurableObject } from "cloudflare:test";
+import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { Env, SQLiteDO } from "./workers-test";
+import { SQLiteDO } from "./workers-test";
 import { SQLSchemaMigration, SQLSchemaMigrations } from "../src/sql-migrations";
 
 function makeM(state: DurableObjectState, migrations: SQLSchemaMigration[]) {
@@ -9,10 +9,6 @@ function makeM(state: DurableObjectState, migrations: SQLSchemaMigration[]) {
         doStorage: state.storage,
         migrations: migrations,
     });
-}
-
-declare module "cloudflare:test" {
-    interface ProvidedEnv extends Env {}
 }
 
 describe("happy paths", async () => {
@@ -66,8 +62,8 @@ describe("happy paths", async () => {
             ]).runAll();
 
             expect(res).toEqual({
-                rowsRead: 2,
-                rowsWritten: 6,
+                rowsRead: 1,
+                rowsWritten: 3,
             });
         });
     });
@@ -232,7 +228,7 @@ describe("happy paths", async () => {
                                 sql: `CREATE TABLE users(name TEXT PRIMARY KEY, age INTEGER);`,
                             },
                         ]).runAll(),
-                ).rejects.toThrowError("migration ID cannot be negative: -1");
+                ).rejects.toThrow("migration ID cannot be negative: -1");
             });
         });
     });

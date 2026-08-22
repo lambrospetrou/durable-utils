@@ -1,10 +1,3 @@
-import {
-    DurableObjectLocationHint,
-    DurableObjectNamespace,
-    DurableObjectNamespaceGetDurableObjectOptions,
-    DurableObjectStub,
-    Rpc,
-} from "@cloudflare/workers-types";
 import { xxHash32 } from "js-xxhash";
 import { stubByName } from "./do-utils";
 import { tryWhile } from "./retries";

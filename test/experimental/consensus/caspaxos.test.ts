@@ -1,11 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { Env } from "../../workers-test";
 import { CASPaxosKV, Topology } from "../../../src/experimental/consensus/caspaxos";
-
-declare module "cloudflare:test" {
-    interface ProvidedEnv extends Env {}
-}
 
 function makeKV(env: Env, topology?: Topology) {
     return new CASPaxosKV(env.CASPaxosDO, {

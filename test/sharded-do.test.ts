@@ -1,11 +1,6 @@
-import { env } from "cloudflare:test";
+import { env } from "cloudflare:workers";
 import { assert, describe, expect, it } from "vitest";
-import { Env } from "./workers-test";
 import { StaticShardedDO } from "../src/do-sharding";
-
-declare module "cloudflare:test" {
-    interface ProvidedEnv extends Env {}
-}
 
 describe("StaticShardedDO", { timeout: 20_000 }, async () => {
     it("N", async () => {

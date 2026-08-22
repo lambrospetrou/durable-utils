@@ -1,5 +1,3 @@
-import type { DurableObjectStorage } from "@cloudflare/workers-types";
-
 /**
  * Represents a single SQL schema migration to run.
  */

@@ -1,30 +1,17 @@
-import { DurableObjectNamespace } from "@cloudflare/workers-types";
-import { DurableObject, RpcStub } from "cloudflare:workers";
-
+import { DurableObject } from "cloudflare:workers";
+import { RegionPlaceableTarget, RegionPlaceableWorkerEntrypoint } from "../src/experimental/region-placer";
 import {
-    RegionPlaceableTarget,
-    RegionPlaceableWorkerEntrypoint,
-    RegionPlacer,
-    RegionPlacerDO,
-} from "../src/experimental/region-placer";
-import { AcceptorClient, PrepareNode, AcceptNode, PrepareResult, AcceptResult, BallotNumber } from "../src/experimental/consensus/caspaxos"
+    AcceptorClient,
+    PrepareNode,
+    AcceptNode,
+    PrepareResult,
+    AcceptResult,
+    BallotNumber,
+} from "../src/experimental/consensus/caspaxos";
 export { RegionPlacer, RegionPlacerDO } from "../src/experimental/region-placer";
 
-export interface Env {
-    SQLDO: DurableObjectNamespace<SQLiteDO>;
-    RegionPlacerDO: DurableObjectNamespace<RegionPlacerDO>;
-
-    CASPaxosDO: DurableObjectNamespace<CASPaxosDO>;
-
-    RegionPlacer: Service<RegionPlacer>;
-    TargetWorker: Service<TargetWorker>;
-}
-
-export class SQLiteDO extends DurableObject<Env> {
-    constructor(
-        readonly ctx: DurableObjectState,
-        readonly env: Env,
-    ) {
+export class SQLiteDO extends DurableObject {
+    constructor(ctx: DurableObjectState, env: Env) {
         super(ctx, env);
     }
 
@@ -41,12 +28,9 @@ export class SQLiteDO extends DurableObject<Env> {
     }
 }
 
-export class CASPaxosDO extends DurableObject<Env> implements PrepareNode, AcceptNode {
+export class CASPaxosDO extends DurableObject implements PrepareNode, AcceptNode {
     private acceptorClient: AcceptorClient;
-    constructor(
-        readonly ctx: DurableObjectState,
-        readonly env: Env,
-    ) {
+    constructor(ctx: DurableObjectState, env: Env) {
         super(ctx, env);
         this.acceptorClient = new AcceptorClient(ctx.storage);
     }
@@ -58,8 +42,14 @@ export class CASPaxosDO extends DurableObject<Env> implements PrepareNode, Accep
     async prepare(key: string, tick: BallotNumber, extra?: any): Promise<PrepareResult> {
         return await this.acceptorClient.prepare(key, tick, extra);
     }
-    
-    async accept(key: string, ballot: BallotNumber, value: any, promise: BallotNumber, extra?: any): Promise<AcceptResult> {
+
+    async accept(
+        key: string,
+        ballot: BallotNumber,
+        value: any,
+        promise: BallotNumber,
+        extra?: any,
+    ): Promise<AcceptResult> {
         return await this.acceptorClient.accept(key, ballot, value, promise, extra);
     }
 }

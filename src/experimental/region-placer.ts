@@ -1,4 +1,3 @@
-import type { DurableObjectLocationHint } from "@cloudflare/workers-types";
 import { DurableObject, WorkerEntrypoint, RpcTarget, RpcStub } from "cloudflare:workers";
 
 interface Env {

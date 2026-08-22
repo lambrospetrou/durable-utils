@@ -1,4 +1,3 @@
-import { DurableObjectNamespace, Rpc } from "@cloudflare/workers-types";
 import { stubByName } from "../../do-utils";
 import { tryWhile } from "../../retries";
 
