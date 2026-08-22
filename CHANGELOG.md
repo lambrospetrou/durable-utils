@@ -1,8 +1,9 @@
 # Changelog
 
-## 0.3.6 (2026-08-22)
+## 0.3.6 and 0.3.7 (2026-08-22)
 
 -   Added `SQLSchemaMigrations.runAllSync()` to avoid requiring async functions to run migrations.
+-   README updates.
 
 ## 0.3.5 (2025-05-05)
 
