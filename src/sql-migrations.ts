@@ -132,11 +132,26 @@ export class SQLSchemaMigrations {
      * to track which migrations ran or not. New migrations should always have higher `idMonotonicInc`
      * than older ones!
      *
+     * Kept for backwards compatibility, but this function is just a wrapper around `runAllSync()`.
+     *
      * @param sqlGen An optional callback function to generate the SQL statement of a given migration at runtime.
      *               If the migration entry already has a valid `sql` statement this callback is NOT called.
      * @returns The numbers of rows read and written throughout the migration execution.
      */
     async runAll(sqlGen?: (idMonotonicInc: number) => string): Promise<{ rowsRead: number; rowsWritten: number }> {
+        return this.runAllSync(sqlGen);
+    }
+
+    /**
+     * Runs all the migrations that haven't already ran. The `idMonotonicInc` of each migration is used
+     * to track which migrations ran or not. New migrations should always have higher `idMonotonicInc`
+     * than older ones!
+     *
+     * @param sqlGen An optional callback function to generate the SQL statement of a given migration at runtime.
+     *               If the migration entry already has a valid `sql` statement this callback is NOT called.
+     * @returns The numbers of rows read and written throughout the migration execution.
+     */
+    runAllSync(sqlGen?: (idMonotonicInc: number) => string): { rowsRead: number; rowsWritten: number } {
         const result = {
             rowsRead: 0,
             rowsWritten: 0,
@@ -146,8 +161,7 @@ export class SQLSchemaMigrations {
             return result;
         }
 
-        this.#_lastMigrationMonotonicId =
-            (await this.#_config.doStorage.get<number>(this.#_lastMigrationIDKeyName())) ?? -1;
+        this.#_lastMigrationMonotonicId = this.#_config.doStorage.kv.get<number>(this.#_lastMigrationIDKeyName()) ?? -1;
 
         // Skip all the applied ones.
         let idx = 0,
@@ -164,7 +178,7 @@ export class SQLSchemaMigrations {
         const doSql = this.#_config.doStorage.sql;
         const migrationsToRun = this.#_migrations.slice(idx);
 
-        await this.#_config.doStorage.transaction(async () => {
+        this.#_config.doStorage.transactionSync(() => {
             let _lastMigrationMonotonicId = this.#_lastMigrationMonotonicId;
 
             migrationsToRun.forEach((migration) => {
@@ -184,7 +198,7 @@ export class SQLSchemaMigrations {
 
             this.#_lastMigrationMonotonicId = _lastMigrationMonotonicId;
 
-            await this.#_config.doStorage.put<number>(this.#_lastMigrationIDKeyName(), this.#_lastMigrationMonotonicId);
+            this.#_config.doStorage.kv.put<number>(this.#_lastMigrationIDKeyName(), this.#_lastMigrationMonotonicId);
         });
 
         return result;
