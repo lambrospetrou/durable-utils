@@ -6,11 +6,11 @@ For changes between versions checkout the [CHANGELOG](./CHANGELOG.md).
 
 **Table of contents**
 
-- [Install](#install)
-- [SQLite Schema migrations](#sqlite-schema-migrations)
-- [StaticShardedDO](#staticshardeddo)
-- [Durable Objects Utilities](#durable-objects-utilities)
-- [Retry Utilities](#retry-utilities)
+-   [Install](#install)
+-   [SQLite Schema migrations](#sqlite-schema-migrations)
+-   [StaticShardedDO](#staticshardeddo)
+-   [Durable Objects Utilities](#durable-objects-utilities)
+-   [Retry Utilities](#retry-utilities)
 
 ## Install
 
@@ -20,7 +20,7 @@ npm install durable-utils
 
 ## SQLite Schema migrations
 
-There is a class `SQLSchemaMigrations` that accepts your Durable Object's instance `.storage` property ([see docs](https://developers.cloudflare.com/durable-objects/api/state/#storage)) along with a list of SQL schema migrations, and you run its `.runAll()` method anywhere in your Durable Object class right before reading or writing from the local SQLite database.
+There is a class `SQLSchemaMigrations` that accepts your Durable Object's instance `.storage` property ([see docs](https://developers.cloudflare.com/durable-objects/api/state/#storage)) along with a list of SQL schema migrations, and you run its `.runAll()` or `.runAllSync()` method anywhere in your Durable Object class right before reading or writing from the local SQLite database.
 
 The class `SQLSchemaMigrations` keeps track of executed migrations both in memory and in the Durable Object storage so it's safe to run it as many times as you want, and it early returns when there are no further migrations to execute.
 
@@ -87,6 +87,8 @@ export class TenantDO extends DurableObject {
         // as seen inside the `operationThatNeedsSQLite()` function below.
         //
         // ctx.blockConcurrencyWhile(async () => {
+        //     this._migrations.runAllSync();
+        //     // or
         //     await this._migrations.runAll();
         // });
     }
@@ -94,7 +96,7 @@ export class TenantDO extends DurableObject {
     async operationThatNeedsSQLite() {
         // Always run your migrations before accessing SQLite.
         // If they already ran, it returns immediately without overhead.
-        await this._migrations.runAll();
+        this._migrations.runAllSync();
 
         // Normal SQLite calls.
         return this.sql.exec("SELECT * FROM wikis;").toArray();
@@ -182,14 +184,16 @@ describe("shardGroupName", async () => {
         });
 
         const sdo2 = new StaticShardedDO(env.SQLDO, {
-            numShards: 3, shardGroupName: "groupOfShards2",
+            numShards: 3,
+            shardGroupName: "groupOfShards2",
         });
         const result2 = await sdo2.one("test", async (stub) => {
             return await stub.actorId();
         });
 
         const sdo3 = new StaticShardedDO(env.SQLDO, {
-            numShards: 3, shardGroupName: "groupOfShards3",
+            numShards: 3,
+            shardGroupName: "groupOfShards3",
         });
         const result3 = await sdo3.one("test", async (stub) => {
             return await stub.actorId();
@@ -220,9 +224,9 @@ const stub = stubByName(env.MY_DURABLE_OBJECT, "instance-1");
 
 **Parameters**
 
-- `doNamespace`: The [Durable Object namespace binding](https://developers.cloudflare.com/durable-objects/api/namespace/).
-- `name`: String identifier for the Durable Object instance to access.
-- `options`: Optional Durable Object configuration options, see <https://developers.cloudflare.com/durable-objects/api/namespace/#get>.
+-   `doNamespace`: The [Durable Object namespace binding](https://developers.cloudflare.com/durable-objects/api/namespace/).
+-   `name`: String identifier for the Durable Object instance to access.
+-   `options`: Optional Durable Object configuration options, see <https://developers.cloudflare.com/durable-objects/api/namespace/#get>.
 
 ### `isErrorRetryable(err)`
 
@@ -247,23 +251,20 @@ This package provides utilities for handling retries with exponential backoff an
 Executes a function with retry logic, implementing exponential backoff with full jitter.
 
 ```javascript
-import { tryN } from  "durable-utils/retries";
+import { tryN } from "durable-utils/retries";
 
-await tryN(
-    3,
-    async (_attempt) => fetch(url),
-);
+await tryN(3, async (_attempt) => fetch(url));
 ```
 
 **Parameters**
 
-- `n`: Maximum number of attempts.
-- `fn`: Async function to execute, receives current attempt number and returns a value `T`.
-- `options`: Optional configuration object
-    - `baseDelayMs`: Base delay for exponential backoff (default: 100ms).
-    - `maxDelayMs`: Maximum delay between retries (default: 3000ms).
-    - `isRetryable`: Function that determines if an error should trigger a retry.
-    - `verbose`: Enable logging of retry attempts.
+-   `n`: Maximum number of attempts.
+-   `fn`: Async function to execute, receives current attempt number and returns a value `T`.
+-   `options`: Optional configuration object
+    -   `baseDelayMs`: Base delay for exponential backoff (default: 100ms).
+    -   `maxDelayMs`: Maximum delay between retries (default: 3000ms).
+    -   `isRetryable`: Function that determines if an error should trigger a retry.
+    -   `verbose`: Enable logging of retry attempts.
 
 The retry delay is calculated using the "Full Jitter" approach, which helps prevent thundering herd problems, as described in Marc Brooker's AWS post [Exponential Backoff And Jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/).
 
@@ -274,7 +275,7 @@ Each retry attempt uses a random delay equal to `random_between(0, min(2^attempt
 Executes a function with retry logic, implementing exponential backoff with full jitter.
 
 ```javascript
-import { tryWhile } from  "durable-utils/retries";
+import { tryWhile } from "durable-utils/retries";
 import { isErrorRetryable } from "durable-utils/do-utils";
 
 await tryWhile(
@@ -285,12 +286,12 @@ await tryWhile(
 
 **Parameters**
 
-- `fn`: Async function to execute, receives current attempt number and returns a value `T`.
-- `isRetryable`: Function that determines if an error should trigger a retry.
-- `options`: Optional configuration object
-    - `baseDelayMs`: Base delay for exponential backoff (default: 100ms).
-    - `maxDelayMs`: Maximum delay between retries (default: 3000ms).
-    - `verbose`: Enable logging of retry attempts.
+-   `fn`: Async function to execute, receives current attempt number and returns a value `T`.
+-   `isRetryable`: Function that determines if an error should trigger a retry.
+-   `options`: Optional configuration object
+    -   `baseDelayMs`: Base delay for exponential backoff (default: 100ms).
+    -   `maxDelayMs`: Maximum delay between retries (default: 3000ms).
+    -   `verbose`: Enable logging of retry attempts.
 
 The retry delay is calculated using the "Full Jitter" approach, which helps prevent thundering herd problems, as described in Marc Brooker's AWS post [Exponential Backoff And Jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/).
 
