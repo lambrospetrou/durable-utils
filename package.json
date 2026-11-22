@@ -1,36 +1,34 @@
 {
     "name": "durable-utils",
-    "version": "0.3.8",
+    "version": "0.4.0",
     "description": "Utilities for Cloudflare Durable Objects and Workers, including SQL migrations, sharding and retry utilities, and more.",
-    "module": "index.esm.js",
     "main": "index.js",
     "typings": "index.d.ts",
     "type": "module",
     "exports": {
         ".": {
             "types": "./index.d.ts",
-            "import": "./index.esm.js",
-            "require": "./index.js"
+            "import": "./index.js"
         },
         "./do-sharding": {
             "types": "./do-sharding.d.ts",
-            "import": "./do-sharding.esm.js",
-            "require": "./do-sharding.js"
+            "import": "./do-sharding.js"
+        },
+        "./do-reducer": {
+            "types": "./do-reducer.d.ts",
+            "import": "./do-reducer.js"
         },
         "./do-utils": {
             "types": "./do-utils.d.ts",
-            "import": "./do-utils.esm.js",
-            "require": "./do-utils.js"
+            "import": "./do-utils.js"
         },
         "./sql-migrations": {
             "types": "./sql-migrations.d.ts",
-            "import": "./sql-migrations.esm.js",
-            "require": "./sql-migrations.js"
+            "import": "./sql-migrations.js"
         },
         "./retries": {
             "types": "./retries.d.ts",
-            "import": "./retries.esm.js",
-            "require": "./retries.js"
+            "import": "./retries.js"
         }
     },
     "scripts": {
@@ -62,7 +60,6 @@
         "@cloudflare/vitest-plugin": "^1.0.0",
         "@cloudflare/workers-types": "^5.20260822.1",
         "esbuild": "^0.24.2",
-        "js-xxhash": "^4.0.0",
         "prettier": "^3.3.3",
         "shx": "^0.3.4",
         "typescript": "^7.0.2",

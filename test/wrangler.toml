@@ -19,8 +19,10 @@ bindings = [
 	{ name = "RegionPlacerDO", class_name = "RegionPlacerDO" },
 
 	{ name = "CASPaxosDO", class_name = "CASPaxosDO" },
+	{ name = "CounterReducerDO", class_name = "CounterReducerDO" },
+	{ name = "StatsReducerDO", class_name = "StatsReducerDO" },
 ]
 
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["SQLiteDO", "RegionPlacerDO", "CASPaxosDO"]
+new_sqlite_classes = ["SQLiteDO", "RegionPlacerDO", "CASPaxosDO", "CounterReducerDO", "StatsReducerDO"]
