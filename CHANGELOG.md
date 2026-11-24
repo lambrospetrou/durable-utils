@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+-   Added the `Platform` interface and `defaultPlatform` to the retry utilities. `tryN`, `tryWhile` and `jitterBackoff` accept an optional `platform` to provide the source of randomness and time.
+-   Added the `signal` option to `tryN` and `tryWhile` to stop the retries with an `AbortSignal`.
+
 ## 0.3.6 and 0.3.7 (2026-08-22)
 
 -   Added `SQLSchemaMigrations.runAllSync()` to avoid requiring async functions to run migrations.

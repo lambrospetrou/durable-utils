@@ -265,6 +265,8 @@ await tryN(3, async (_attempt) => fetch(url));
     -   `maxDelayMs`: Maximum delay between retries (default: 3000ms).
     -   `isRetryable`: Function that determines if an error should trigger a retry.
     -   `verbose`: Enable logging of retry attempts.
+    -   `platform`: Object that implements the `Platform` interface (default: `defaultPlatform`). See [Custom platform](#custom-platform).
+    -   `signal`: `AbortSignal` that stops the retries when it aborts. See [Cancellation](#cancellation).
 
 The retry delay is calculated using the "Full Jitter" approach, which helps prevent thundering herd problems, as described in Marc Brooker's AWS post [Exponential Backoff And Jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/).
 
@@ -292,7 +294,43 @@ await tryWhile(
     -   `baseDelayMs`: Base delay for exponential backoff (default: 100ms).
     -   `maxDelayMs`: Maximum delay between retries (default: 3000ms).
     -   `verbose`: Enable logging of retry attempts.
+    -   `platform`: Object that implements the `Platform` interface (default: `defaultPlatform`). See [Custom platform](#custom-platform).
+    -   `signal`: `AbortSignal` that stops the retries when it aborts. See [Cancellation](#cancellation).
 
 The retry delay is calculated using the "Full Jitter" approach, which helps prevent thundering herd problems, as described in Marc Brooker's AWS post [Exponential Backoff And Jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/).
 
 Each retry attempt uses a random delay equal to `random_between(0, min(2^attempt * baseDelayMs, maxDelayMs))`.
+
+### Custom platform
+
+The retry utilities get randomness and time from a `Platform` object. The default is `defaultPlatform`, which uses `Math.random()` and `setTimeout()`. Give a custom `platform` to control these, for example to make tests deterministic.
+
+```typescript
+import { tryN, type Platform } from "durable-utils/retries";
+
+const platform: Platform = {
+    // Must return a number in the range [0, 1).
+    random: () => 0.5,
+    // Should stop early and reject with `options.signal.reason` when the signal aborts.
+    wait: async (_ms, _options) => {},
+};
+
+await tryN(3, async (_attempt) => fetch(url), { platform });
+```
+
+`jitterBackoff(attempt, baseDelayMs, maxDelayMs, platform)` also accepts an optional object with a `random()` function.
+
+### Cancellation
+
+Give an `AbortSignal` as `signal` to stop the retries. When the signal aborts, no new attempt starts, the wait between attempts stops early, and the function rejects with `signal.reason`. An attempt that is in progress is not stopped, so use the same signal inside `fn` if necessary.
+
+```javascript
+import { tryN } from "durable-utils/retries";
+
+const controller = new AbortController();
+const signal = controller.signal;
+
+await tryN(5, async (_attempt) => fetch(url, { signal }), { signal });
+```
+
+You can also use `AbortSignal.timeout(ms)` to stop the retries after a total time.
