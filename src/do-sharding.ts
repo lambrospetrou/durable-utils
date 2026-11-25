@@ -1,10 +1,6 @@
-import { xxHash32 } from "js-xxhash";
 import { stubByName } from "./do-utils";
+import { hash32 } from "./internal/xxhash";
 import { tryWhile } from "./retries";
-
-// Golden Ratio constant used for better hash scattering
-// See https://softwareengineering.stackexchange.com/a/402543
-const GOLDEN_RATIO = 0x9e3779b1;
 
 export interface StaticShardedDOOptions {
     /**
@@ -424,7 +420,7 @@ export class StaticShardedDO<T extends Rpc.DurableObjectBranded | undefined> {
     }
 
     #shardForPartitionKey(partitionKey: string): ShardId {
-        const shard = xxHash32(partitionKey, GOLDEN_RATIO) % this.#options.numShards;
+        const shard = hash32(partitionKey) % this.#options.numShards;
         return shard;
     }
 

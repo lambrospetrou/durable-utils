@@ -9,6 +9,7 @@ For changes between versions checkout the [CHANGELOG](./CHANGELOG.md).
 -   [Install](#install)
 -   [SQLite Schema migrations](#sqlite-schema-migrations)
 -   [StaticShardedDO](#staticshardeddo)
+-   [ShardedReducerDO](#shardedreducerdo)
 -   [Durable Objects Utilities](#durable-objects-utilities)
 -   [Retry Utilities](#retry-utilities)
 
@@ -17,6 +18,8 @@ For changes between versions checkout the [CHANGELOG](./CHANGELOG.md).
 ```sh
 npm install durable-utils
 ```
+
+The package is ESM-only (`import`), and it does not support `require()`.
 
 ## SQLite Schema migrations
 
@@ -206,6 +209,87 @@ describe("shardGroupName", async () => {
         expect(result2).not.toEqual(result3);
     });
 });
+```
+
+## ShardedReducerDO
+
+`ShardedReducerDO` and `ShardedReducerDOPeer` aggregate very high write throughput per key, while every key keeps one Durable Object that you can read to get its latest aggregated value.
+
+A shard group uses `R + N` Durable Objects:
+
+-   `N` (`numIngestShards`) ingest Durable Objects receive the writes, spread by hashing `hashKey`.
+-   Each ingest Durable Object folds the writes into one delta per `reductionKey` for `flushIntervalMs`, then forwards its deltas towards the root of each key on a Durable Object alarm. Deltas travel through a static tree in which no Durable Object receives from more than `fanIn` senders per flush interval, and intermediate hops merge them further.
+-   `R` (`numRootShards`) root Durable Objects store the reduced value of each `reductionKey` (`hash(reductionKey) % R`). They never receive raw writes, and a read is a single call to one of them.
+
+Reads lag behind writes by about `hops * flushIntervalMs`, with `hops` about `log_fanIn(N)` (2 hops for `N = 100`, `fanIn = 10`).
+
+> [!IMPORTANT]
+>
+> -   The reducer operators must be associative and commutative.
+> -   Delivery between Durable Objects is at-least-once. A failure after the receiver applied a batch makes the sender send it again, which applies it twice. Use idempotent operators (max, min, set union) if duplicates are not acceptable.
+> -   `durability: "storage"` (default) persists each write until the next hop acknowledges it. `durability: "memory"` keeps writes only in memory until they reach their root.
+> -   `ShardedReducerDOPeer` uses the Durable Object alarm and the synchronous `ctx.storage.kv` API (SQLite storage backend).
+> -   Never change `numIngestShards`, `numRootShards`, or `fanIn` of a shard group that is in use.
+
+### Example
+
+In your Durable Object class, instantiate `ShardedReducerDOPeer` and delegate `reduceIngest`, `reduceMerge`, `reduceGet`, and `alarm`:
+
+```typescript
+import { DurableObject } from "cloudflare:workers";
+import {
+    ShardedReducerDOIngestMessage,
+    ShardedReducerDOMergeMessage,
+    ShardedReducerDOPeer,
+    ShardedReducerDOTarget,
+} from "durable-utils/do-reducer";
+
+export class CounterReducerDO extends DurableObject<Env> implements ShardedReducerDOTarget<number> {
+    #reducer: ShardedReducerDOPeer<number>;
+
+    constructor(ctx: DurableObjectState, env: Env) {
+        super(ctx, env);
+        this.#reducer = new ShardedReducerDOPeer<number>(ctx, env.COUNTER_REDUCER_DO, {
+            reducer: (a, b) => a + b,
+        });
+    }
+
+    async reduceIngest(msg: ShardedReducerDOIngestMessage<number>): Promise<void> {
+        await this.#reducer.ingest(msg);
+    }
+
+    async reduceMerge(msg: ShardedReducerDOMergeMessage<number>): Promise<void> {
+        await this.#reducer.merge(msg);
+    }
+
+    async reduceGet(reductionKey: string): Promise<number | undefined> {
+        return this.#reducer.get(reductionKey);
+    }
+
+    async alarm(): Promise<void> {
+        await this.#reducer.alarm();
+    }
+}
+```
+
+In your Worker (or another Durable Object), use `ShardedReducerDO` to write and read:
+
+```typescript
+import { ShardedReducerDO } from "durable-utils/do-reducer";
+
+const reducer = new ShardedReducerDO(env.COUNTER_REDUCER_DO, {
+    shardGroupName: "campaign-clicks",
+    numIngestShards: 100,
+    numRootShards: 10,
+    fanIn: 10,
+    flushIntervalMs: 100,
+});
+
+// Durable ingest buffering by default ("storage"), or "memory" for maximum throughput:
+await reducer.send({ hashKey: userId, reductionKey: campaignId, payload: 1 }, { durability: "storage" });
+
+// Deterministic single-DO read from the root shard owning `campaignId`:
+const clicks = await reducer.get(campaignId);
 ```
 
 ## Durable Objects Utilities

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 (unreleased)
+
+-   **BREAKING:** The package is ESM-only. The CommonJS build (`require("durable-utils")`) is removed, because the shared hash module uses top-level await to create its WebAssembly instance.
+-   Switched the hash function of `StaticShardedDO` from `js-xxhash` to `xxhash-wasm`. Both produce the same xxHash32 values, so keys stay in the same shards.
+-   Added `ShardedReducerDO` and `ShardedReducerDOPeer` (`durable-utils/do-reducer`) for very high write throughput aggregations with a single Durable Object to read the aggregated value of each key.
+
 ## 0.3.8 (2026-11-25)
 
 -   Added the `Platform` interface and `defaultPlatform` to the retry utilities. `tryN`, `tryWhile` and `jitterBackoff` accept an optional `platform` to provide the source of randomness and time.
