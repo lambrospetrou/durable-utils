@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.8 (2026-11-25)
 
 -   Added the `Platform` interface and `defaultPlatform` to the retry utilities. `tryN`, `tryWhile` and `jitterBackoff` accept an optional `platform` to provide the source of randomness and time.
 -   Added the `signal` option to `tryN` and `tryWhile` to stop the retries with an `AbortSignal`.
